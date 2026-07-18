@@ -1265,6 +1265,10 @@ function showView(name) {
     $('setClassName').textContent = cls ? cls.name : 'your first class';
     $('setUrl').value = store.bridgeUrl;
     $('setDriveClient').value = store.driveClientId;
+    // Where the teacher lands after the toast is gone — put the real cause next
+    // to the field that fixes it.
+    const ds = $('driveStatus');
+    if (ds && lastDriveError) ds.textContent = '✕ Last Drive error: ' + lastDriveError;
   }
   if (name !== 'grade' && window.camStop) camStop();
 }
@@ -2683,7 +2687,7 @@ async function commitScore({ quiz, student, studentId, answers }) {
   // Cache + upload the scanned sheet image and stamp its Drive id onto the
   // payload, so the row carries the image in the same write. No-op for manual
   // entries and when Drive is off; never throws.
-  await attachScanImage(payload);
+  const imageState = await attachScanImage(payload);
   showSaveState('saving');
   try {
     const data = await api('submit', payload);
@@ -2692,13 +2696,13 @@ async function commitScore({ quiz, student, studentId, answers }) {
     // This write changed the grid. Don't fetch now; drop the cache so the Scores
     // tab reloads when the teacher next looks at it.
     _gb = null;
-    return { ok: true, data, student: payload.student };
+    return { ok: true, data, student: payload.student, imageState };
   } catch (e) {
     setConn(false);
     store.queue = [...store.queue, { classId: store.currentClass, payload }];
     showSaveState('queued', store.queue.length);
     toast('Could not reach sheet — response queued locally.', true);
-    return { ok: false, student: payload.student };
+    return { ok: false, student: payload.student, imageState };
   }
 }
 
@@ -2772,8 +2776,9 @@ async function flushQueue() {
         if (blob) {
           const cls = store.classes.find(c => c.id === classId);
           payload.imageId = await driveUploadImage(blob, cls && cls.name, payload.quiz, payload.studentId || payload.student || payload.writeId);
+          clearDriveTrouble();
         }
-      } catch (e) { /* Drive off / still offline — submit without the image */ }
+      } catch (e) { noteDriveTrouble(e); /* still submit without the image */ }
     }
     try {
       await apiTo(store.bridgeUrl, 'submit', { ...payload, classId });
@@ -3531,6 +3536,9 @@ function addScanTally(res, out) {
     label: res.studentId || '(no ID)',
     confidence: confidencePct(res),
     flagged: shaky, ok: true, queued: !!(out && out.ok === false),
+    // A toast is missable mid-batch; the tally is the batch's durable record of
+    // which papers went to Drive image-less.
+    noImage: !!(out && out.imageState === 'failed'),
   });
   renderScanTally();
 }
@@ -3552,6 +3560,7 @@ function renderScanTally() {
     row.appendChild(who);
     if (it.flagged) { const f = document.createElement('span'); f.className = 'tally-flag'; f.textContent = '⚑ review'; row.appendChild(f); }
     if (it.queued)  { const q = document.createElement('span'); q.className = 'tally-flag'; q.textContent = '⏳ queued'; row.appendChild(q); }
+    if (it.noImage) { const n = document.createElement('span'); n.className = 'tally-flag'; n.textContent = '⚠ no image'; row.appendChild(n); }
     const conf = document.createElement('span');
     conf.className = 'tally-conf';
     conf.textContent = it.ok ? (it.confidence == null ? '' : it.confidence + '%') : '✕';
@@ -3739,7 +3748,9 @@ async function getDriveToken(interactive) {
     _tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
   });
 }
-function resetDriveAuth() { _tokenClient = null; _tokenClientId = null; _driveToken = null; _driveTokenExp = 0; }
+// Also re-arms the once-per-session Drive warning: saving a new Client ID is an
+// attempt at a fix, and the next failure has to be able to speak up again.
+function resetDriveAuth() { _tokenClient = null; _tokenClientId = null; _driveToken = null; _driveTokenExp = 0; driveWarned = false; }
 
 /* ---- Drive REST (folders + multipart upload + media download) ---- */
 async function driveApi(path, opts) {
@@ -3797,10 +3808,29 @@ async function driveFetchImageUrl(fileId) {
   return URL.createObjectURL(await res.blob());
 }
 
+/* ---- Drive trouble reporting ----
+ * Uploads stay best-effort (a Drive problem must never block a score), but
+ * "best-effort" must not mean "silent": a lost Client ID, an expired token and a
+ * real outage used to look identical — like nothing happened. The message is
+ * kept for Settings, and toasted only ONCE per session, since a per-sheet toast
+ * would fire on every paper in a batch and bury itself. */
+let lastDriveError = '';
+let driveWarned = false;
+function noteDriveTrouble(e) {
+  lastDriveError = (e && e.message) || String(e);
+  if (driveWarned) return;
+  driveWarned = true;
+  try { toast('Images are NOT being saved to Drive — ' + lastDriveError, true); } catch (_) {}
+}
+function clearDriveTrouble() { lastDriveError = ''; driveWarned = false; }
+
 /**
  * Best-effort: cache the pending scan image locally and, if Drive is on, upload
  * it and stamp the fileId onto the payload. Never throws — a failure just leaves
  * the row image-less with the blob still queued in IndexedDB by writeId.
+ * Returns 'none' (nothing to save), 'saved', or 'failed' — callers need the
+ * distinction because a hand entry legitimately has no image, while a *scan*
+ * with no image is a real problem worth flagging.
  */
 async function attachScanImage(payload) {
   const blob = await consumePendingImage();
@@ -3808,14 +3838,21 @@ async function attachScanImage(payload) {
     // Overriding a reviewed row with no new photo: keep the original image link
     // so the corrected (newest-wins) row is still reviewable.
     if (reviewImageId) { payload.imageId = reviewImageId; reviewImageId = null; }
-    return;
+    return 'none';
   }
   reviewImageId = null;
   idbPut(payload.writeId, blob).catch(() => {});
   const cls = currentCls();
   try {
     payload.imageId = await driveUploadImage(blob, cls && cls.name, payload.quiz, payload.studentId || payload.student || payload.writeId);
-  } catch (e) { /* Drive off or offline — retried on flush / re-scan */ }
+    clearDriveTrouble();
+    return 'saved';
+  } catch (e) {
+    // Still non-blocking — the blob stays in IndexedDB and is retried on flush /
+    // re-scan — but the teacher now finds out.
+    noteDriveTrouble(e);
+    return 'failed';
+  }
 }
 
 /* ---------- photo upload ---------- */
