@@ -18,8 +18,10 @@ The rebrand (`f00d273`) renamed every `store` key from `scantron.*` to `quizshee
 bridge URL, class cache, current class, camera choice, **OAuth Client ID** — became unreadable in
 place. It is not deleted, just orphaned under a name nothing reads.
 
-This already bit us once: the wiped `scantron.driveClientId` made Drive image upload fail silently
-and looked for a while like a Drive outage.
+This already bit us once: the wiped `scantron.driveClientId` made Drive image upload fail, and for
+a while it looked like a Drive outage. That failure is now at least *visible* (`030ef6a`), but
+visibility is not the fix — the keys are still orphaned, and the next teacher to hit this still
+loses their settings.
 
 Worth being precise about who this affects: a brand-new teacher has no `scantron.*` keys, so the
 rename costs them nothing. It matters because —
@@ -38,15 +40,7 @@ prefix too, which is per-class and won't be caught by a fixed key list.
 **Also:** treat this as a standing rule, not a one-off. Renaming a persisted key without a
 migration is a silent data-loss bug — it should not happen a second time.
 
-## 2. Drive upload failures are invisible — *confirmed*
-
-`attachScanImage` swallows every Drive error (index.html:3818), so a misconfigured Client ID, an
-expired token, a revoked scope, and a real outage all present as "nothing happened". A teacher can
-scan an entire class and lose every image with no signal at all.
-
-**Fix:** planned in [surface-drive-upload-errors.md](surface-drive-upload-errors.md).
-
-## 3. Every teacher must supply their own OAuth Client ID — *needs check*
+## 2. Every teacher must supply their own OAuth Client ID — *needs check*
 
 Drive image saving is off until the teacher pastes an OAuth Client ID into Settings
 (index.html:3717, 3953). Creating a Google Cloud project, enabling the Drive API, making an OAuth
@@ -62,7 +56,7 @@ flow, and `drive.file` keeps the app scoped to files it created. Before relying 
 - whether a shipped Client ID constant conflicts with the hand-pasted setting (keep the setting as
   an override, same shape as `DEFAULT_BRIDGE_URL`).
 
-## 4. No way to tell which build a user is running — *confirmed*
+## 3. No way to tell which build a user is running — *confirmed*
 
 There is no version stamp anywhere in the UI. Three separate caches sit between a commit and a
 phone: the push to GitHub Pages, the Pages rebuild, and the service worker's stale-while-revalidate
@@ -77,7 +71,7 @@ That is survivable when the developer owns the phone. It is not survivable when 
 Settings; have the service worker cache name derive from it so a new build reliably supersedes the
 old one.
 
-## 5. Student-data handling has no stated policy — *open question, needs Will's call*
+## 4. Student-data handling has no stated policy — *open question, needs Will's call*
 
 Scores live in the teacher's own Sheet and images in the teacher's own Drive, which is a defensible
 design — nothing transits a server we run. But before a wider launch there should be an explicit,

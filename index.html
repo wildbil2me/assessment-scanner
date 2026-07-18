@@ -756,6 +756,12 @@ table.results th {
 
 </main>
 
+<!-- Build stamp: shown on every view, not just Settings, so a teacher reporting a
+     problem can read it off whatever screen they are already looking at. -->
+<footer class="hint" style="text-align:center;padding:0 20px 24px">
+  Quiz Sheets · build <span id="appVersion"></span>
+</footer>
+
 <!-- Print answer sheets modal (printer icon in the header) -->
 <div id="printModal" class="modal-overlay hidden">
   <div class="modal-panel" style="width:680px" role="dialog" aria-modal="true" aria-labelledby="printTitle">
@@ -1022,6 +1028,16 @@ const DEFAULT_BRIDGE_URL = '';
  * serveApp() matches this line by regex — keep it a bare boolean one-liner.
  */
 const SERVED_BUILD = false;
+
+/**
+ * Which build this is, shown in the page footer.
+ *
+ * Hand-maintained: there is no build step to inject a commit SHA, and a SHA
+ * could not name the commit that contains it anyway. Date plus a same-day
+ * serial is the honest version of that — bump it in the same commit as any
+ * change that reaches a phone, or the stamp lies.
+ */
+const APP_VERSION = '2026.07.18.1';
 
 /**
  * Central-bridge model (same shape as Roll Call!): ONE Apps Script deployment
@@ -4013,6 +4029,8 @@ function onConnected() {
 }
 
 function init() {
+  const ver = $('appVersion');
+  if (ver) ver.textContent = APP_VERSION;
   buildClassTabs();
   applyCurrentClass();
   rebuildNewQuizGrid();
