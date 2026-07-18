@@ -132,3 +132,11 @@ would make every teacher re-grant a full Drive scope.
 [plans/todo.md](plans/todo.md) is the running list, [plans/priority-tasks.md](plans/priority-tasks.md)
 is what's actually being worked on now, and finished plans move to [plans/completed/](plans/completed/)
 named after the work rather than the date.
+
+[plans/launch-blockers.md](plans/launch-blockers.md) is the narrower list of what must be fixed
+before anyone other than Will uses the app — silent failures, unsupportable bug reports, and setup
+steps a teacher can't complete. Check it before calling a release ready, and add to it when you find
+a problem that only bites users you can't sit next to. Its first entry is the standing rule behind
+several of the others: **renaming a persisted localStorage key without a migration is a silent
+data-loss bug** — the `scantron.*` → `quizsheets.*` rebrand orphaned every saved setting, including
+the Drive OAuth Client ID, and the resulting failure was invisible.
