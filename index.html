@@ -3457,21 +3457,27 @@ const LOW_MARGIN = 0.08;
 function isLowConfidence(res) { return res.minMargin != null && res.minMargin < LOW_MARGIN; }
 
 async function onSheetCaptured(res) {
-  beep();
+  const shaky = isLowConfidence(res);
+  beep(shaky ? 'flag' : undefined);
   applyScanResult(res);
   setPendingImage(workCanvas); // hold the captured frame for Drive/IndexedDB
   scanState.lastSavedSig = res.studentId + '|' + res.answers.join(',');
-  // Even with auto-save on, a shaky read is held for review rather than silently
-  // committed — the whole point of auto-save is trust, and a wrong score saved
-  // unseen is worse than one that waited for a glance.
-  const shaky = isLowConfidence(res);
-  if ($('chkAutoSave').checked && !shaky) {
-    $('scanStatus').textContent = 'Captured — saving…';
+  if ($('chkAutoSave').checked) {
+    // Batch flow (same as photo mode): commit EVERY readable scan and keep the
+    // live loop running — low-confidence reads are saved AND flagged for later
+    // review in the Scores tab, never held. Stopping the camera on a faint read
+    // was the old behavior and it breaks a hands-free stack of sheets.
+    $('scanStatus').textContent = 'Saving…';
     await scoreAndSave();
-    // resume scanning for the next paper
+    scanSession.saved++;
+    if (shaky) scanSession.flagged++;
+    // re-arm for the next paper (a re-read of THIS one is deduped by lastSavedSig)
     scanState.lastSig = null; scanState.stable = 0;
-    $('scanStatus').textContent = 'Saved ✓ — ready for the next sheet.';
+    $('scanStatus').textContent = 'Saved ✓ — ' + sessionTally() + '. Ready for the next sheet.';
+    if (shaky) toast('Low-confidence scan saved & flagged — review it later in Scores.', true);
   } else {
+    // Auto-save off → hold for a manual Score & save, stopping the live loop so
+    // the captured frame stays put for review.
     camStop();
     if (shaky) {
       $('scanStatus').textContent = 'Captured, but some marks are faint or ambiguous — double-check the answers below, then hit "Score & save".';
@@ -3825,7 +3831,7 @@ if (SERVED_BUILD) {
 document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x === b));
   const mode = b.dataset.mode;
-  if (mode === 'photo') resetScanSession(); // fresh batch tally when entering photo mode
+  if (mode === 'photo' || mode === 'camera') resetScanSession(); // fresh batch tally per scan session
   $('photoPanel').style.display = mode === 'photo' ? '' : 'none';
   const camControls = mode === 'camera';
   $('btnCamStart').style.display = camControls && !scanState.running ? '' : 'none';
