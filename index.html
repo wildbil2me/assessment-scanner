@@ -654,12 +654,16 @@ table.results th {
             <button class="btn secondary" id="btnCamStop" style="display:none">Stop</button>
             <!-- Hidden until there's actually a choice to make; see camListCameras. -->
             <select id="camSelect" style="display:none" aria-label="Which camera to scan with"></select>
-            <label><input type="checkbox" id="chkAutoSave"> auto-save each scan</label>
+            <label><input type="checkbox" id="chkAutoSave"> auto-save each scan (confident + flagged)</label>
             <span class="hint" id="scanStatus">Point the camera at a filled answer sheet — all four corner squares must be in view.</span>
           </div>
           <div id="photoPanel" style="display:none">
-            <label>Upload a photo (or scan) of the answer sheet</label>
-            <input type="file" id="photoFile" accept="image/*">
+            <!-- The button IS the camera-reopen gesture: a browser only opens the
+                 file picker from a user tap, and after an async save that gesture is
+                 gone (see plans/continuous-batch-scanning.md). Kept at the top so no
+                 scrolling is needed between sheets; the raw input is visually hidden. -->
+            <label for="photoFile" id="photoScanBtn" class="btn" style="display:block;text-align:center;font-size:17px;padding:16px;cursor:pointer">📷 Scan sheet</label>
+            <input type="file" id="photoFile" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0)">
             <canvas id="photoDebug" style="display:none;max-width:100%;margin-top:10px;border:1px solid #e0e4ea;border-radius:8px"></canvas>
           </div>
         </div>
@@ -1038,6 +1042,11 @@ const store = {
   // device only; the feature is opt-in.
   get driveClientId() { return localStorage.getItem('quizsheets.driveClientId') || ''; },
   set driveClientId(v) { localStorage.setItem('quizsheets.driveClientId', v || ''); },
+  // Auto-save each confident scan (and save+flag low-confidence ones) instead of
+  // holding every read for a manual Score tap. Defaults ON — the batch flow is the
+  // point on a phone; unset means "never chose", not "off".
+  get autoSave() { const v = localStorage.getItem('quizsheets.autoSave'); return v === null ? true : v === '1'; },
+  set autoSave(v) { localStorage.setItem('quizsheets.autoSave', v ? '1' : '0'); },
 };
 function currentCls() {
   const id = store.currentClass;
@@ -2568,7 +2577,17 @@ function refreshGradeQuizPicker() {
   if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
   rebuildGradeGrid();
 }
+// Running tally for the batch-scan flow (photo mode). Counts only — the Scores
+// tab is the end-of-batch review surface, so there is no in-session list.
+let scanSession = { saved: 0, flagged: 0, skipped: 0 };
+function resetScanSession() {
+  scanSession = { saved: 0, flagged: 0, skipped: 0 };
+  const btn = $('photoScanBtn');
+  if (btn) btn.textContent = '📷 Scan sheet';
+}
+
 function rebuildGradeGrid() {
+  resetScanSession();
   grQuizMeta = store.quizzes.find(q => q.name === $('grQuiz').value) || null;
   const n = grQuizMeta ? grQuizMeta.numQuestions : 0;
   const c = grQuizMeta ? grQuizMeta.choicesPerQ : 5;
@@ -3376,16 +3395,24 @@ function drawOverlay(res) {
   ctx.fillText(res.ok ? 'Sheet locked — hold still…' : 'Corners found: ' + found.length + ' / 4', 12, 24);
 }
 
-function beep() {
+// kind 'flag' → a lower, double buzz so a flagged (low-confidence) save sounds
+// clearly different from a clean one without stopping the batch.
+function beep(kind) {
+  const flag = kind === 'flag';
   try {
     const ac = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ac.createOscillator(), g = ac.createGain();
-    osc.frequency.value = 880; osc.connect(g); g.connect(ac.destination);
-    g.gain.setValueAtTime(0.15, ac.currentTime);
-    osc.start(); osc.stop(ac.currentTime + 0.12);
-    setTimeout(() => ac.close(), 300);
+    const t = ac.currentTime;
+    const tone = (freq, start, dur) => {
+      const osc = ac.createOscillator(), g = ac.createGain();
+      osc.frequency.value = freq; osc.connect(g); g.connect(ac.destination);
+      g.gain.setValueAtTime(0.15, start);
+      osc.start(start); osc.stop(start + dur);
+    };
+    if (flag) { tone(440, t, 0.1); tone(330, t + 0.14, 0.14); }
+    else { tone(880, t, 0.12); }
+    setTimeout(() => ac.close(), 400);
   } catch (e) { /* no audio available */ }
-  if (navigator.vibrate) navigator.vibrate(120);
+  if (navigator.vibrate) navigator.vibrate(flag ? [80, 60, 80] : 120);
 }
 
 /**
@@ -3671,40 +3698,88 @@ async function attachScanImage(payload) {
 }
 
 /* ---------- photo upload ---------- */
+// Compact running-count suffix for #scanStatus, e.g. "3 this session (1 flagged)".
+function sessionTally() {
+  let s = scanSession.saved + ' this session';
+  if (scanSession.flagged) s += ' (' + scanSession.flagged + ' flagged)';
+  if (scanSession.skipped) s += ', ' + scanSession.skipped + ' skipped';
+  return s;
+}
+function bumpScanButton() {
+  const btn = $('photoScanBtn');
+  if (btn) btn.textContent = scanSession.saved || scanSession.skipped
+    ? '📷 Scan next sheet (' + scanSession.saved + ')'
+    : '📷 Scan sheet';
+}
+
 $('photoFile').addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
   if (!grQuizMeta) return toast('Pick a quiz first.', true);
-  const img = new Image();
-  img.onload = () => {
-    const scale = Math.min(1, 1400 / img.width);
-    workCanvas.width = Math.round(img.width * scale);
-    workCanvas.height = Math.round(img.height * scale);
-    workCanvas.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, workCanvas.width, workCanvas.height);
-    URL.revokeObjectURL(img.src);
-    const res = readSheet(workCanvas, currentLayout(), grQuizMeta.numQuestions, true);
-    if (!res.ok) {
-      renderScanDebug(res);
-      toast(res.reason === 'corners'
-        ? 'Could not find all 4 corner squares — retake with the whole sheet visible and evenly lit.'
-        : 'Could not read the sheet geometry — try a flatter, straighter photo.', true);
-      return;
-    }
-    applyScanResult(res);
-    setPendingImage(workCanvas); // hold the uploaded photo for Drive/IndexedDB
+  // Read the image inside a promise so the async save below can await it and the
+  // handler stays a single linear flow.
+  const img = await new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = reject;
+    im.src = URL.createObjectURL(file);
+  }).catch(() => null);
+  e.target.value = '';
+  if (!img) return toast('Could not open that image.', true);
+  const scale = Math.min(1, 1400 / img.width);
+  workCanvas.width = Math.round(img.width * scale);
+  workCanvas.height = Math.round(img.height * scale);
+  workCanvas.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, workCanvas.width, workCanvas.height);
+  URL.revokeObjectURL(img.src);
+  const res = readSheet(workCanvas, currentLayout(), grQuizMeta.numQuestions, true);
+
+  // Unreadable geometry: never saved. Show the debug overlay, toast a retake,
+  // and count the skip so the batch tally stays honest.
+  if (!res.ok) {
     renderScanDebug(res);
-    const shaky = isLowConfidence(res);
+    scanSession.skipped++;
+    bumpScanButton();
+    $('scanStatus').textContent = 'Could not read that sheet — retake. ' + sessionTally() + '.';
+    toast(res.reason === 'corners'
+      ? 'Could not find all 4 corner squares — retake with the whole sheet visible and evenly lit.'
+      : 'Could not read the sheet geometry — try a flatter, straighter photo.', true);
+    return;
+  }
+
+  applyScanResult(res);
+  setPendingImage(workCanvas); // hold the uploaded photo for Drive/IndexedDB
+  const shaky = isLowConfidence(res);
+
+  // Auto-save off → the original review flow: fill the grid, show the debug
+  // overlay, wait for a manual Score & save tap.
+  if (!$('chkAutoSave').checked) {
+    renderScanDebug(res);
     $('scanStatus').textContent = shaky
       ? 'Photo read, but some marks are faint or ambiguous — double-check the answers below, then hit "Score & save".'
       : 'Photo read ✓ — review below, then hit "Score & save".';
     toast(shaky ? 'Low-confidence read — please review before saving.' : 'Photo read — review the bubbles, then save.', shaky);
-  };
-  img.onerror = () => toast('Could not open that image.', true);
-  img.src = URL.createObjectURL(file);
-  e.target.value = '';
+    return;
+  }
+
+  // Auto-save on → commit it and roll straight to the next sheet. Low-confidence
+  // reads are saved AND flagged (distinct beep, debug shown for a later glance)
+  // rather than held; the Scores tab is where flagged rows get reviewed.
+  beep(shaky ? 'flag' : undefined);
+  $('scanStatus').textContent = 'Saving…';
+  await scoreAndSave();
+  scanSession.saved++;
+  if (shaky) { scanSession.flagged++; renderScanDebug(res); }
+  else { $('photoDebug').style.display = 'none'; }
+  bumpScanButton();
+  $('scanStatus').textContent = 'Saved ✓ — ' + sessionTally() + '. Tap "Scan next sheet".';
+  if (shaky) toast('Low-confidence scan saved & flagged — review it later in Scores.', true);
 });
 
 /* ---------- grade mode switching ---------- */
+// Auto-save defaults on (batch flow) and is remembered across sessions.
+$('chkAutoSave').checked = store.autoSave;
+$('chkAutoSave').addEventListener('change', () => { store.autoSave = $('chkAutoSave').checked; });
+
 // The sandbox the bridge serves into refuses camera permission outright (see
 // SERVED_BUILD), so drop the mode entirely there and open on Photo instead.
 if (SERVED_BUILD) {
@@ -3717,6 +3792,7 @@ if (SERVED_BUILD) {
 document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x === b));
   const mode = b.dataset.mode;
+  if (mode === 'photo') resetScanSession(); // fresh batch tally when entering photo mode
   $('photoPanel').style.display = mode === 'photo' ? '' : 'none';
   const camControls = mode === 'camera';
   $('btnCamStart').style.display = camControls && !scanState.running ? '' : 'none';
