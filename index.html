@@ -454,6 +454,19 @@ table.results th {
 .score-big { font-size: 48px; font-weight: 800; text-align: center; margin: 8px 0 2px; font-variant-numeric: tabular-nums; }
 .score-sub { text-align: center; color: #8a9bb0; margin-bottom: 8px; font-size: 13px; }
 
+/* Live per-scan tally under the scan area (Grade tab). Newest row on top. */
+.scan-tally { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.scan-tally:empty { display: none; }
+.tally-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  border: 1px solid #e6e9f0; border-radius: 8px; background: #fff; font-size: 13px;
+}
+.tally-row.flagged { border-color: #f0c36d; background: #fffaf0; }
+.tally-row.skip    { border-color: #f3c0c0; background: #fdf2f2; }
+.tally-who  { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: #1a1a2e; }
+.tally-conf { font-variant-numeric: tabular-nums; color: #8a9bb0; font-weight: 600; }
+.tally-flag { font-size: 11px; font-weight: 700; color: #b9770e; }
+
 .empty-state { text-align: center; color: #a0aab8; padding: 48px 20px; font-size: 13px; }
 
 @media (max-width: 640px) {
@@ -631,7 +644,7 @@ table.results th {
         <div class="panel-title-row">
           <div class="panel-title">
             <h2>✅ Grade responses</h2>
-            <p>Scan with the camera, upload a photo, or type answers — scores save to the quiz tab</p>
+            <p>Scan sheets in with the camera or a photo — scores save to the quiz tab. Correct a read from the Quizzes tab.</p>
           </div>
         </div>
       </div>
@@ -639,9 +652,8 @@ table.results th {
         <label>Quiz</label>
         <select id="grQuiz"></select>
         <div class="toolbar" style="margin-top:12px">
-          <button class="mode-btn active" data-mode="camera" id="modeCamera">📷 Camera scan</button>
+          <button class="mode-btn" data-mode="camera" id="modeCamera">📷 Camera scan</button>
           <button class="mode-btn" data-mode="photo">🖼 Photo upload</button>
-          <button class="mode-btn" data-mode="manual">⌨ Manual entry</button>
         </div>
 
         <div id="scanPanel" style="margin-top:12px">
@@ -650,12 +662,10 @@ table.results th {
             <canvas id="camOverlay" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none"></canvas>
           </div>
           <div class="toolbar">
-            <button class="btn" id="btnCamStart">Start camera</button>
-            <button class="btn secondary" id="btnCamStop" style="display:none">Stop</button>
+            <button class="btn secondary" id="btnCamStop" style="display:none">Stop camera</button>
             <!-- Hidden until there's actually a choice to make; see camListCameras. -->
             <select id="camSelect" style="display:none" aria-label="Which camera to scan with"></select>
-            <label><input type="checkbox" id="chkAutoSave"> auto-save each scan (confident + flagged)</label>
-            <span class="hint" id="scanStatus">Point the camera at a filled answer sheet — all four corner squares must be in view.</span>
+            <span class="hint" id="scanStatus">Pick a scan method above to begin.</span>
           </div>
           <div id="photoPanel" style="display:none">
             <!-- The button IS the camera-reopen gesture: a browser only opens the
@@ -668,31 +678,10 @@ table.results th {
           </div>
         </div>
 
-        <!-- Review/override: opened from a quiz's results row when it has a saved
-             scan image. Shows the original sheet beside the editable grid below. -->
-        <div id="reviewPanel" style="display:none;margin-top:12px;border:1px solid #e0e4ea;border-radius:10px;padding:10px;background:#fafbfc">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-            <b style="font-size:13px">📷 Scanned sheet</b>
-            <button class="btn secondary" id="btnReviewClose" style="padding:4px 10px">Done reviewing</button>
-          </div>
-          <span class="hint" id="reviewStatus"></span>
-          <img id="reviewImg" alt="Scanned answer sheet" style="display:block;max-width:100%;margin-top:8px;border-radius:8px">
-        </div>
-
-        <div class="row">
-          <div><label>Student name</label><input type="text" id="grStudent" placeholder="First Last"></div>
-          <div><label>Student ID <span style="text-transform:none">(optional)</span></label><input type="text" id="grStudentId" inputmode="numeric"></div>
-        </div>
-        <label>Fast entry — type answers as letters (e.g. <b>ABCAD</b>); space or dash for blank</label>
-        <input type="text" id="grFast" autocomplete="off" autocapitalize="characters" placeholder="ABCAD…">
-        <label style="margin-top:14px">Or tap bubbles</label>
-        <div class="qgrid" id="grGrid"></div>
-        <div class="toolbar">
-          <button class="btn" id="btnScore">Score &amp; save to sheet</button>
-          <button class="btn secondary" id="btnGradeClear">Clear</button>
-          <span class="hint" id="grStatus"></span>
-        </div>
-        <div id="grResult"></div>
+        <!-- Live per-scan tally for this batch. The scan flow (camera loop and
+             photo upload) fills this with one row per sheet — confidence % and a
+             flag on the shaky ones. Correction happens later in the review modal. -->
+        <div id="scanTally" class="scan-tally"></div>
       </div>
     </div>
   </section>
@@ -945,6 +934,40 @@ table.results th {
   </div>
 </div>
 
+<!-- Correct/override & manual entry. Opened from a quiz's results row (📷 Review,
+     carrying the saved scan image) or blank via ✎ Enter by hand. Deliberately off
+     the Grade tab, which is capture-only — see plans/design-tweaks.md. -->
+<div id="reviewModal" class="modal-overlay hidden">
+  <div class="modal-panel" style="width:680px" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+    <div class="modal-header">
+      <h2 id="reviewTitle">Review &amp; correct</h2>
+      <button class="modal-close" id="btnReviewClose" title="Close review dialog" aria-label="Close review dialog">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- The saved scan photo, shown only when correcting a scanned row. -->
+      <div id="reviewPanel" style="display:none;margin-bottom:14px;border:1px solid #e0e4ea;border-radius:10px;padding:10px;background:#fafbfc">
+        <b style="font-size:13px">📷 Scanned sheet</b>
+        <span class="hint" id="reviewStatus"></span>
+        <img id="reviewImg" alt="Scanned answer sheet" style="display:block;max-width:100%;margin-top:8px;border-radius:8px">
+      </div>
+      <div class="row">
+        <div><label>Student name</label><input type="text" id="grStudent" placeholder="First Last"></div>
+        <div><label>Student ID <span style="text-transform:none">(optional)</span></label><input type="text" id="grStudentId" inputmode="numeric"></div>
+      </div>
+      <label>Fast entry — type answers as letters (e.g. <b>ABCAD</b>); space or dash for blank</label>
+      <input type="text" id="grFast" autocomplete="off" autocapitalize="characters" placeholder="ABCAD…">
+      <label style="margin-top:14px">Or tap bubbles</label>
+      <div class="qgrid" id="grGrid"></div>
+      <div class="toolbar">
+        <button class="btn" id="btnScore">Score &amp; save to sheet</button>
+        <button class="btn secondary" id="btnGradeClear">Clear</button>
+        <span class="hint" id="grStatus"></span>
+      </div>
+      <div id="grResult"></div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div id="srLive" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
@@ -1042,11 +1065,6 @@ const store = {
   // device only; the feature is opt-in.
   get driveClientId() { return localStorage.getItem('quizsheets.driveClientId') || ''; },
   set driveClientId(v) { localStorage.setItem('quizsheets.driveClientId', v || ''); },
-  // Auto-save each confident scan (and save+flag low-confidence ones) instead of
-  // holding every read for a manual Score tap. Defaults ON — the batch flow is the
-  // point on a phone; unset means "never chose", not "off".
-  get autoSave() { const v = localStorage.getItem('quizsheets.autoSave'); return v === null ? true : v === '1'; },
-  set autoSave(v) { localStorage.setItem('quizsheets.autoSave', v ? '1' : '0'); },
 };
 function currentCls() {
   const id = store.currentClass;
@@ -1237,7 +1255,7 @@ $('hdrSettings').addEventListener('click', () => showView('settings'));
 function showView(name) {
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === name));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
-  if (name === 'grade') refreshGradeQuizPicker();
+  if (name === 'grade') { refreshGradeQuizPicker(); if (SERVED_BUILD) selectScanMode('photo'); else neutralizeScanMode(); }
   // Scores go stale the moment a paper is scanned, so re-fetch on arrival if
   // what we hold is from another class or from before the last scan.
   if (name === 'scores' && store.currentClass && (!_gb || _gbClass !== store.currentClass)) refreshGradebook();
@@ -2446,7 +2464,9 @@ function renderResults(data, quizName) {
   const sheetLink = store.sheetUrl && quiz.gid != null
     ? ' · <a href="' + esc(store.sheetUrl) + '#gid=' + quiz.gid + '" target="_blank" rel="noopener" style="color:#5b6fcc">open tab in Google Sheets ↗</a>' : '';
   if (!rows.length) {
-    $('resultsBody').innerHTML = '<div class="empty-state">No responses yet. Grade some papers!' + sheetLink + '</div>';
+    $('resultsBody').innerHTML = '<div class="empty-state">No responses yet. Grade some papers!' + sheetLink + '</div>' +
+      '<button class="btn secondary" id="btnManualEntry" style="padding:4px 10px;font-size:12px">✎ Enter by hand</button>';
+    $('btnManualEntry').addEventListener('click', () => openManual(quizName));
     return;
   }
   const pcts = rows.map(r => r.percent).sort((a, b) => a - b);
@@ -2455,6 +2475,7 @@ function renderResults(data, quizName) {
 
   let html = '<div class="hint" style="margin:0 0 10px">' + rows.length + ' responses · avg <b>' + avg.toFixed(1) + '%</b> · median <b>' +
     median.toFixed(1) + '%</b> · range ' + pcts[0].toFixed(0) + '–' + pcts[pcts.length - 1].toFixed(0) + '%' + sheetLink + '</div>';
+  html += '<button class="btn secondary" id="btnManualEntry" style="margin:0 0 10px;padding:4px 10px;font-size:12px">✎ Enter by hand</button>';
 
   // student table (click a row for per-question detail)
   html += '<div style="overflow-x:auto"><table class="results" id="resTable"><tr><th>Student</th><th>ID</th><th>Score</th><th>%</th><th>When</th><th></th></tr>';
@@ -2521,49 +2542,69 @@ function renderResults(data, quizName) {
     e.stopPropagation(); // don't also toggle the row's answer detail
     openReview(quizName, rev[+btn.dataset.i]);
   }));
+  $('btnManualEntry').addEventListener('click', () => openManual(quizName));
 }
 function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
+// Override an existing scanned row: load its response into the modal grid beside
+// the saved photo so an ambiguous read can be corrected and re-saved (a rescan
+// appends; the newest timestamp wins per student, exactly as a fresh scan does).
 async function openReview(quizName, r) {
-  showView('grade');
-  const sel = $('grQuiz');
-  if ([...sel.options].some(o => o.value === quizName)) { sel.value = quizName; rebuildGradeGrid(); }
-  // Load the recorded response into the editable grid for override.
+  reviewMeta = store.quizzes.find(q => q.name === quizName) || null;
+  buildReviewGrid();
   $('grStudent').value = r.student || '';
   $('grStudentId').value = r.studentId || '';
   for (let i = 0; i < grAnswers.length; i++) grAnswers[i] = r.answers[i] || '';
   paintGrid($('grGrid'), grAnswers);
   syncFastFromGrid();
-  // Manual mode: nothing should re-capture over the override, and there's no new
-  // image to attach (leave pendingImage null so the re-save keeps the same photo
-  // reference isn't overwritten — a corrected row simply carries no new upload).
-  const manualBtn = document.querySelector('.mode-btn[data-mode="manual"]');
-  if (manualBtn) manualBtn.click();
+  // No new photo to attach — keep the row's existing image link so the corrected
+  // (newest-wins) row stays reviewable.
   pendingImage = null;
-  reviewImageId = r.imageId; // keep the photo link on the corrected re-save
+  reviewImageId = r.imageId || null;
+  $('reviewTitle').textContent = 'Review & correct — ' + quizName;
+  openReviewModal();
   const panel = $('reviewPanel'), img = $('reviewImg');
+  if (!r.imageId) { panel.style.display = 'none'; return; }
   panel.style.display = '';
   img.removeAttribute('src');
   $('reviewStatus').textContent = '⏳ Loading the scanned sheet…';
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   try {
     img.src = await driveFetchImageUrl(r.imageId);
-    $('reviewStatus').textContent = 'Compare against the photo, fix any bubbles above, then “Score & save” to override.';
+    $('reviewStatus').textContent = 'Compare against the photo, fix any bubbles, then “Score & save” to override.';
   } catch (err) {
     $('reviewStatus').textContent = '✕ Could not load the image (' + err.message + ').';
   }
 }
+// Hand-enter a fresh result (the fallback that leaving Manual mode off Grade
+// would otherwise remove). Same modal, blank, no photo.
+function openManual(quizName) {
+  reviewMeta = store.quizzes.find(q => q.name === quizName) || null;
+  if (!reviewMeta) return toast('Pick a quiz first (refresh the quiz list if empty).', true);
+  buildReviewGrid();
+  $('grStudent').value = ''; $('grStudentId').value = '';
+  pendingImage = null; reviewImageId = null;
+  $('reviewPanel').style.display = 'none';
+  $('reviewTitle').textContent = 'Enter by hand — ' + reviewMeta.name;
+  openReviewModal();
+  $('grStudent').focus();
+}
+function openReviewModal() { $('reviewModal').classList.remove('hidden'); }
 function closeReview() {
   const img = $('reviewImg');
   if (img.src && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
   img.removeAttribute('src');
   $('reviewPanel').style.display = 'none';
+  $('reviewModal').classList.add('hidden');
 }
 $('btnReviewClose').addEventListener('click', closeReview);
 
 /* ============================ grading ============================ */
+// grQuizMeta is the Grade tab's scan target (set from #grQuiz); reviewMeta is the
+// modal's quiz; grAnswers is the modal's editable answer array. Kept separate so
+// opening a review mid-batch never disturbs the ongoing scan session.
 let grAnswers = [];
 let grQuizMeta = null;
+let reviewMeta = null;
 
 function refreshGradeQuizPicker() {
   const sel = $('grQuiz');
@@ -2575,31 +2616,33 @@ function refreshGradeQuizPicker() {
     sel.appendChild(o);
   });
   if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
-  rebuildGradeGrid();
+  setGradeQuiz();
 }
-// Running tally for the batch-scan flow (photo mode). Counts only — the Scores
-// tab is the end-of-batch review surface, so there is no in-session list.
-let scanSession = { saved: 0, flagged: 0, skipped: 0 };
+// Live per-scan tally for the batch-scan flow. items drives the #scanTally list.
+let scanSession = { saved: 0, flagged: 0, skipped: 0, items: [] };
 function resetScanSession() {
-  scanSession = { saved: 0, flagged: 0, skipped: 0 };
+  scanSession = { saved: 0, flagged: 0, skipped: 0, items: [] };
   const btn = $('photoScanBtn');
   if (btn) btn.textContent = '📷 Scan sheet';
+  renderScanTally();
 }
-
-function rebuildGradeGrid() {
-  resetScanSession();
+// Picking a quiz on the (scan-only) Grade tab targets it and starts a fresh batch.
+function setGradeQuiz() {
   grQuizMeta = store.quizzes.find(q => q.name === $('grQuiz').value) || null;
-  const n = grQuizMeta ? grQuizMeta.numQuestions : 0;
-  const c = grQuizMeta ? grQuizMeta.choicesPerQ : 5;
+  resetScanSession();
+}
+$('grQuiz').addEventListener('change', setGradeQuiz);
+
+// Build the modal's editable grid, sized to the quiz being reviewed/entered.
+function buildReviewGrid() {
+  const n = reviewMeta ? reviewMeta.numQuestions : 0;
+  const c = reviewMeta ? reviewMeta.choicesPerQ : 5;
   grAnswers = Array.from({ length: n }, () => '');
   $('grFast').value = '';
   $('grResult').innerHTML = '';
-  // Starting a fresh grade abandons any in-progress override/review.
-  reviewImageId = null; pendingImage = null;
-  $('reviewPanel').style.display = 'none';
+  $('grStatus').textContent = '';
   buildGrid($('grGrid'), n, c, grAnswers, syncFastFromGrid);
 }
-$('grQuiz').addEventListener('change', rebuildGradeGrid);
 
 $('grFast').addEventListener('input', () => {
   const raw = $('grFast').value.toUpperCase().replace(/[^A-J \-]/g, '');
@@ -2617,57 +2660,76 @@ function syncFastFromGrid() {
 
 $('btnGradeClear').addEventListener('click', () => {
   $('grStudent').value = ''; $('grStudentId').value = '';
-  rebuildGradeGrid();
+  pendingImage = null; reviewImageId = null;
+  $('reviewPanel').style.display = 'none';
+  buildReviewGrid();
 });
 
-$('btnScore').addEventListener('click', () => scoreAndSave());
-async function scoreAndSave() {
-  if (!grQuizMeta) return toast('Pick a quiz first (refresh the quiz list if empty).', true);
+// Shared save core: build the write payload, attach any scan image, and submit (or
+// queue offline). Returns {ok, data?, student}; the UI is the caller's business, so
+// both the modal (hand entry/override) and the batch scan flow can reuse it.
+async function commitScore({ quiz, student, studentId, answers }) {
   const payload = {
-    quiz: grQuizMeta.name,
-    student: $('grStudent').value.trim(),
-    studentId: $('grStudentId').value.trim(),
-    answers: grAnswers.slice(),
+    quiz,
+    student: (student || '').trim(),
+    studentId: (studentId || '').trim(),
+    answers: answers.slice(),
     timestamp: new Date().toISOString(),
     // Minted here, not at send time: if this scan ends up queued offline, every
     // later retry must reuse this id or a write that landed with a lost response
     // would score the same paper twice.
     writeId: newWriteId(),
   };
-  // local score preview against cached key
-  const local = localScore(grAnswers, grQuizMeta.key || []);
-  showScore(local, payload.student);
   // Cache + upload the scanned sheet image and stamp its Drive id onto the
   // payload, so the row carries the image in the same write. No-op for manual
   // entries and when Drive is off; never throws.
   await attachScanImage(payload);
-  $('grStatus').textContent = 'Saving…';
   showSaveState('saving');
   try {
     const data = await api('submit', payload);
     setConn(true);
     showSaveState('saved');
-    $('grStatus').textContent = 'Saved to tab "' + grQuizMeta.name + '" ✓';
-    showScore({ earned: data.score, possible: data.possible, percent: data.percent }, payload.student);
-    grQuizMeta.responses = (grQuizMeta.responses || 0) + 1;
-    store.quizzes = store.quizzes;
-    // This scan just changed the grid. Don't fetch now — the teacher is still
-    // scanning; drop it so the Scores tab reloads when they next look at it.
+    // This write changed the grid. Don't fetch now; drop the cache so the Scores
+    // tab reloads when the teacher next looks at it.
     _gb = null;
-    // ready for next student
-    $('grStudent').value = ''; $('grStudentId').value = '';
-    grAnswers = grAnswers.map(() => '');
-    paintGrid($('grGrid'), grAnswers); $('grFast').value = '';
-    $('grStudent').focus();
+    return { ok: true, data, student: payload.student };
   } catch (e) {
     setConn(false);
     store.queue = [...store.queue, { classId: store.currentClass, payload }];
     showSaveState('queued', store.queue.length);
-    $('grStatus').textContent = 'Offline — queued (' + store.queue.length + ' pending). Will retry from Settings.';
     toast('Could not reach sheet — response queued locally.', true);
+    return { ok: false, student: payload.student };
   }
 }
 
+$('btnScore').addEventListener('click', () => scoreAndSave());
+// Modal save (hand entry / override). The batch scan flow calls commitScore directly.
+async function scoreAndSave() {
+  if (!reviewMeta) return toast('Pick a quiz first (refresh the quiz list if empty).', true);
+  // Instant local preview against the cached key while the write is in flight.
+  showScore(localScore(grAnswers, reviewMeta.key || []), $('grStudent').value.trim());
+  $('grStatus').textContent = 'Saving…';
+  const res = await commitScore({
+    quiz: reviewMeta.name,
+    student: $('grStudent').value,
+    studentId: $('grStudentId').value,
+    answers: grAnswers,
+  });
+  if (res.ok) {
+    $('grStatus').textContent = 'Saved to tab "' + reviewMeta.name + '" ✓';
+    showScore({ earned: res.data.score, possible: res.data.possible, percent: res.data.percent }, res.student);
+    reviewMeta.responses = (reviewMeta.responses || 0) + 1;
+    store.quizzes = store.quizzes;
+    // ready for the next hand-entered student
+    $('grStudent').value = ''; $('grStudentId').value = '';
+    grAnswers = grAnswers.map(() => '');
+    paintGrid($('grGrid'), grAnswers); $('grFast').value = '';
+    $('reviewPanel').style.display = 'none';
+    $('grStudent').focus();
+  } else {
+    $('grStatus').textContent = 'Offline — queued (' + store.queue.length + ' pending). Will retry from Settings.';
+  }
+}
 function localScore(answers, key) {
   let earned = 0, possible = 0;
   key.forEach((k, i) => {
@@ -3322,7 +3384,6 @@ async function camStart() {
     // it that rejection was silent.
     await video.play();
     $('camWrap').style.display = '';
-    $('btnCamStart').style.display = 'none';
     $('btnCamStop').style.display = '';
     scanState.running = true;
     scanState.lastSig = null; scanState.stable = 0;
@@ -3343,10 +3404,8 @@ function camStop() {
   scanState.running = false;
   if (scanState.stream) { scanState.stream.getTracks().forEach(t => t.stop()); scanState.stream = null; }
   $('camWrap').style.display = 'none';
-  $('btnCamStart').style.display = '';
   $('btnCamStop').style.display = 'none';
 }
-$('btnCamStart').addEventListener('click', camStart);
 $('btnCamStop').addEventListener('click', camStop);
 
 function scanLoop() {
@@ -3455,45 +3514,68 @@ function beep(kind) {
  */
 const LOW_MARGIN = 0.08;
 function isLowConfidence(res) { return res.minMargin != null && res.minMargin < LOW_MARGIN; }
+// Rough confidence indicator (not a probability): map the weakest per-question
+// margin onto 0–100%. A margin of ≥0.25 reads 100%; the LOW_MARGIN flag cutoff
+// (0.08) lands near 32%.
+function confidencePct(res) {
+  return res.minMargin == null ? null : Math.round(Math.min(1, res.minMargin / 0.25) * 100);
+}
 
-async function onSheetCaptured(res) {
+// Append one row to the live batch tally. `res` is the scan; `out` is the commit
+// result (out.ok === false → the write queued offline).
+function addScanTally(res, out) {
   const shaky = isLowConfidence(res);
-  beep(shaky ? 'flag' : undefined);
-  applyScanResult(res);
-  setPendingImage(workCanvas); // hold the captured frame for Drive/IndexedDB
-  scanState.lastSavedSig = res.studentId + '|' + res.answers.join(',');
-  if ($('chkAutoSave').checked) {
-    // Batch flow (same as photo mode): commit EVERY readable scan and keep the
-    // live loop running — low-confidence reads are saved AND flagged for later
-    // review in the Scores tab, never held. Stopping the camera on a faint read
-    // was the old behavior and it breaks a hands-free stack of sheets.
-    $('scanStatus').textContent = 'Saving…';
-    await scoreAndSave();
-    scanSession.saved++;
-    if (shaky) scanSession.flagged++;
-    // re-arm for the next paper (a re-read of THIS one is deduped by lastSavedSig)
-    scanState.lastSig = null; scanState.stable = 0;
-    $('scanStatus').textContent = 'Saved ✓ — ' + sessionTally() + '. Ready for the next sheet.';
-    if (shaky) toast('Low-confidence scan saved & flagged — review it later in Scores.', true);
-  } else {
-    // Auto-save off → hold for a manual Score & save, stopping the live loop so
-    // the captured frame stays put for review.
-    camStop();
-    if (shaky) {
-      $('scanStatus').textContent = 'Captured, but some marks are faint or ambiguous — double-check the answers below, then hit "Score & save".';
-      toast('Low-confidence scan — please review before saving.', true);
-    } else {
-      $('scanStatus').textContent = 'Captured — review below, then hit "Score & save".';
-      toast('Sheet scanned — review the bubbles, then save.');
-    }
+  scanSession.saved++;
+  if (shaky) scanSession.flagged++;
+  scanSession.items.unshift({
+    label: res.studentId || '(no ID)',
+    confidence: confidencePct(res),
+    flagged: shaky, ok: true, queued: !!(out && out.ok === false),
+  });
+  renderScanTally();
+}
+function addSkipTally() {
+  scanSession.skipped++;
+  scanSession.items.unshift({ label: 'Couldn’t read that sheet', confidence: null, flagged: false, ok: false });
+  renderScanTally();
+}
+function renderScanTally() {
+  const el = $('scanTally');
+  if (!el) return;
+  el.innerHTML = '';
+  for (const it of scanSession.items) {
+    const row = document.createElement('div');
+    row.className = 'tally-row' + (it.ok ? (it.flagged ? ' flagged' : '') : ' skip');
+    const who = document.createElement('span');
+    who.className = 'tally-who';
+    who.textContent = it.label;
+    row.appendChild(who);
+    if (it.flagged) { const f = document.createElement('span'); f.className = 'tally-flag'; f.textContent = '⚑ review'; row.appendChild(f); }
+    if (it.queued)  { const q = document.createElement('span'); q.className = 'tally-flag'; q.textContent = '⏳ queued'; row.appendChild(q); }
+    const conf = document.createElement('span');
+    conf.className = 'tally-conf';
+    conf.textContent = it.ok ? (it.confidence == null ? '' : it.confidence + '%') : '✕';
+    row.appendChild(conf);
+    el.appendChild(row);
   }
 }
 
-function applyScanResult(res) {
-  for (let i = 0; i < grAnswers.length; i++) grAnswers[i] = res.answers[i] || '';
-  paintGrid($('grGrid'), grAnswers);
-  syncFastFromGrid();
-  if (res.studentId) $('grStudentId').value = res.studentId;
+// Grade is capture-only: commit EVERY readable scan and keep the live loop
+// running. Low-confidence reads are saved AND flagged (tally + Scores), never
+// held — holding breaks a hands-free stack of sheets. Correction happens later
+// in the review modal (📷 Review on a Scores/Quizzes row).
+async function onSheetCaptured(res) {
+  const shaky = isLowConfidence(res);
+  beep(shaky ? 'flag' : undefined);
+  setPendingImage(workCanvas); // hold the captured frame for Drive/IndexedDB
+  scanState.lastSavedSig = res.studentId + '|' + res.answers.join(',');
+  $('scanStatus').textContent = 'Saving…';
+  const out = await commitScore({ quiz: grQuizMeta.name, studentId: res.studentId, answers: res.answers });
+  addScanTally(res, out);
+  // re-arm for the next paper (a re-read of THIS one is deduped by lastSavedSig)
+  scanState.lastSig = null; scanState.stable = 0;
+  $('scanStatus').textContent = (out.ok ? 'Saved ✓ — ' : 'Queued offline — ') + sessionTally() + '. Ready for the next sheet.';
+  if (shaky) toast('Low-confidence scan saved & flagged — review it later in Scores.', true);
 }
 
 /**
@@ -3776,7 +3858,7 @@ $('photoFile').addEventListener('change', async e => {
   // and count the skip so the batch tally stays honest.
   if (!res.ok) {
     renderScanDebug(res);
-    scanSession.skipped++;
+    addSkipTally();
     bumpScanButton();
     $('scanStatus').textContent = 'Could not read that sheet — retake. ' + sessionTally() + '.';
     toast(res.reason === 'corners'
@@ -3785,65 +3867,63 @@ $('photoFile').addEventListener('change', async e => {
     return;
   }
 
-  applyScanResult(res);
   setPendingImage(workCanvas); // hold the uploaded photo for Drive/IndexedDB
   const shaky = isLowConfidence(res);
 
-  // Auto-save off → the original review flow: fill the grid, show the debug
-  // overlay, wait for a manual Score & save tap.
-  if (!$('chkAutoSave').checked) {
-    renderScanDebug(res);
-    $('scanStatus').textContent = shaky
-      ? 'Photo read, but some marks are faint or ambiguous — double-check the answers below, then hit "Score & save".'
-      : 'Photo read ✓ — review below, then hit "Score & save".';
-    toast(shaky ? 'Low-confidence read — please review before saving.' : 'Photo read — review the bubbles, then save.', shaky);
-    return;
-  }
-
-  // Auto-save on → commit it and roll straight to the next sheet. Low-confidence
-  // reads are saved AND flagged (distinct beep, debug shown for a later glance)
-  // rather than held; the Scores tab is where flagged rows get reviewed.
+  // Grade is capture-only: commit the read and roll straight to the next sheet.
+  // Low-confidence reads are saved AND flagged (distinct beep, debug shown for a
+  // later glance) rather than held; correction happens in the review modal.
   beep(shaky ? 'flag' : undefined);
   $('scanStatus').textContent = 'Saving…';
-  await scoreAndSave();
-  scanSession.saved++;
-  if (shaky) { scanSession.flagged++; renderScanDebug(res); }
-  else { $('photoDebug').style.display = 'none'; }
+  const out = await commitScore({ quiz: grQuizMeta.name, studentId: res.studentId, answers: res.answers });
+  addScanTally(res, out);
+  if (shaky) renderScanDebug(res);
+  else $('photoDebug').style.display = 'none';
   bumpScanButton();
-  $('scanStatus').textContent = 'Saved ✓ — ' + sessionTally() + '. Tap "Scan next sheet".';
+  $('scanStatus').textContent = (out.ok ? 'Saved ✓ — ' : 'Queued offline — ') + sessionTally() + '. Tap "Scan next sheet".';
   if (shaky) toast('Low-confidence scan saved & flagged — review it later in Scores.', true);
 });
 
 /* ---------- grade mode switching ---------- */
-// Auto-save defaults on (batch flow) and is remembered across sessions.
-$('chkAutoSave').checked = store.autoSave;
-$('chkAutoSave').addEventListener('change', () => { store.autoSave = $('chkAutoSave').checked; });
+// Grade is capture-only: no mode is active until the teacher picks one (step 2 of
+// the load flow — pick a quiz, then pick a scan method). Selecting Camera
+// auto-starts the live loop; the mode tap is the user gesture getUserMedia needs.
+let scanMode = null;
+function selectScanMode(mode) {
+  const changed = mode !== scanMode;
+  scanMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x.dataset.mode === mode));
+  if (changed) resetScanSession(); // fresh batch tally per scan session
+  $('photoPanel').style.display = mode === 'photo' ? '' : 'none';
+  if (mode === 'camera') {
+    if (!scanState.running) camStart(); // sets its own scanStatus/#btnCamStop
+    $('camSelect').style.display = $('camSelect').options.length > 1 ? '' : 'none';
+  } else {
+    camStop();
+    $('camSelect').style.display = 'none';
+    $('scanStatus').textContent = 'Upload a clear top-down photo of the sheet.';
+  }
+}
+document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => selectScanMode(b.dataset.mode)));
+
+// Back to "pick a method": no active mode, camera off. Used on each Grade-tab
+// entry (except the served build, which is Photo-only) so a fresh visit starts
+// at the two-step flow rather than a stale mode.
+function neutralizeScanMode() {
+  scanMode = null;
+  document.querySelectorAll('.mode-btn').forEach(x => x.classList.remove('active'));
+  $('photoPanel').style.display = 'none';
+  $('camSelect').style.display = 'none';
+  camStop();
+  $('scanStatus').textContent = 'Pick a scan method above to begin.';
+}
 
 // The sandbox the bridge serves into refuses camera permission outright (see
 // SERVED_BUILD), so drop the mode entirely there and open on Photo instead.
 if (SERVED_BUILD) {
   $('modeCamera').remove();
-  document.querySelector('.mode-btn[data-mode="photo"]').classList.add('active');
-  $('photoPanel').style.display = '';
-  $('btnCamStart').style.display = 'none';
-  $('scanStatus').textContent = 'Upload a clear top-down photo of the sheet.';
+  selectScanMode('photo');
 }
-document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => {
-  document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x === b));
-  const mode = b.dataset.mode;
-  if (mode === 'photo' || mode === 'camera') resetScanSession(); // fresh batch tally per scan session
-  $('photoPanel').style.display = mode === 'photo' ? '' : 'none';
-  const camControls = mode === 'camera';
-  $('btnCamStart').style.display = camControls && !scanState.running ? '' : 'none';
-  $('btnCamStop').style.display = camControls && scanState.running ? '' : 'none';
-  // Only worth showing once it holds a real choice — camListCameras fills it in
-  // after the first grant and leaves it empty when there's one camera.
-  $('camSelect').style.display = camControls && $('camSelect').options.length > 1 ? '' : 'none';
-  if (mode !== 'camera') camStop();
-  $('scanStatus').textContent = mode === 'manual' ? 'Type or tap answers below.' :
-    mode === 'photo' ? 'Upload a clear top-down photo of the sheet.' :
-    'Point the camera at a filled answer sheet — all four corner squares must be in view.';
-}));
 
 /* ============================ settings ============================ */
 $('btnSaveUrl').addEventListener('click', () => testAndConnect('setUrl', 'setStatus'));
