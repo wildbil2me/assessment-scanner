@@ -3395,24 +3395,57 @@ function drawOverlay(res) {
   ctx.fillText(res.ok ? 'Sheet locked — hold still…' : 'Corners found: ' + found.length + ' / 4', 12, 24);
 }
 
+// One SHARED AudioContext, reused for every beep. A fresh context per call is
+// fine on desktop but silent on mobile: iOS/Android create every AudioContext
+// in the "suspended" state and refuse to make sound until it is resume()d from
+// inside a user gesture. So we keep one context and unlock it on the first tap
+// (unlockAudio below), after which scheduled tones play even from an async
+// callback — the standard game-audio pattern.
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) _audioCtx = new AC();
+  }
+  return _audioCtx;
+}
+function unlockAudio() {
+  const ac = getAudioCtx();
+  if (ac && ac.state === 'suspended') ac.resume().catch(() => {});
+  // iOS ≥16.4: default 'ambient' audio is muted by the hardware silent switch;
+  // 'playback' lets the beep sound even on silent. No-op elsewhere.
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+}
+// Unlock on the first (and every) tap — resume() is idempotent, and iOS can
+// re-suspend a backgrounded context, so re-arming each gesture is cheap safety.
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  ['pointerdown', 'touchend', 'click'].forEach(ev =>
+    window.addEventListener(ev, unlockAudio, { passive: true }));
+}
+
 // kind 'flag' → a lower, double buzz so a flagged (low-confidence) save sounds
 // clearly different from a clean one without stopping the batch.
 function beep(kind) {
   const flag = kind === 'flag';
   try {
-    const ac = new (window.AudioContext || window.webkitAudioContext)();
-    const t = ac.currentTime;
-    const tone = (freq, start, dur) => {
-      const osc = ac.createOscillator(), g = ac.createGain();
-      osc.frequency.value = freq; osc.connect(g); g.connect(ac.destination);
-      g.gain.setValueAtTime(0.15, start);
-      osc.start(start); osc.stop(start + dur);
-    };
-    if (flag) { tone(440, t, 0.1); tone(330, t + 0.14, 0.14); }
-    else { tone(880, t, 0.12); }
-    setTimeout(() => ac.close(), 400);
+    const ac = getAudioCtx();
+    if (ac) {
+      if (ac.state === 'suspended') ac.resume().catch(() => {});
+      const t = ac.currentTime;
+      const tone = (freq, start, dur) => {
+        const osc = ac.createOscillator(), g = ac.createGain();
+        osc.frequency.value = freq; osc.connect(g); g.connect(ac.destination);
+        g.gain.setValueAtTime(0.15, start);
+        osc.start(start); osc.stop(start + dur);
+      };
+      if (flag) { tone(440, t, 0.1); tone(330, t + 0.14, 0.14); }
+      else { tone(880, t, 0.12); }
+    }
   } catch (e) { /* no audio available */ }
-  if (navigator.vibrate) navigator.vibrate(flag ? [80, 60, 80] : 120);
+  // navigator.vibrate is Android-only — iOS Safari has never supported it, so
+  // the "shake" simply can't fire on an iPhone. Wrapped so a blocked call (no
+  // user activation) never throws into the caller.
+  if (navigator.vibrate) { try { navigator.vibrate(flag ? [80, 60, 80] : 120); } catch (e) {} }
 }
 
 /**
