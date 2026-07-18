@@ -1,0 +1,6 @@
+# Local Claude Code settings — not part of the app
+.claude/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db

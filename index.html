@@ -1,0 +1,3785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#5b6fcc">
+<title>Scantron!</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✏️</text></svg>">
+<!-- PWA install + offline app-shell cache. Only link/meta tags here; the service
+     worker is registered from inside the single script block below (the tests
+     extract that block by regex and forbid a second script element). -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; color: #1a1a2e;
+  min-height: 100vh; font-size: 14px; overscroll-behavior-y: contain;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+button, .bub, .pill, .cls-tab, .q-btn, .compact-btn, .add-class-btn, .mode-btn,
+.hdr-icon-btn, .action-btn, .connect-btn, .quiz-item, .class-action-btn, .modal-close {
+  touch-action: manipulation; user-select: none;
+}
+
+/* Accessibility: keyboard-only focus ring, matching the suite */
+:focus-visible { outline: 2px solid #5b6fcc; outline-offset: 2px; border-radius: 3px; }
+.sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.hidden { display: none !important; }
+
+/* ── CONNECT SCREEN (first run) ── */
+#connectScreen {
+  position: fixed; inset: 0; background: #0d2137;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 1001; gap: 14px; padding: 20px; text-align: center;
+}
+#connectScreen h2 { color: #fff; font-size: 20px; font-weight: 700; }
+#connectScreen .connect-sub { color: rgba(255,255,255,0.6); font-size: 13px; max-width: 460px; line-height: 1.6; }
+#connectScreen .connect-sub code { color: rgba(255,255,255,0.8); font-size: 12px; }
+#connectScreen input {
+  width: min(540px, 90vw); padding: 12px 14px; border-radius: 8px;
+  border: 1.5px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.08);
+  color: #fff; font-size: 13px; outline: none; font-family: inherit;
+}
+#connectScreen input:focus { border-color: #27ae60; }
+.connect-btn {
+  padding: 12px 28px; border-radius: 8px; border: none; cursor: pointer;
+  background: #27ae60; color: #fff; font-size: 14px; font-weight: 700;
+  font-family: inherit; transition: background 0.15s; min-height: 44px;
+}
+.connect-btn:hover { background: #219a52; }
+.wiz-skip {
+  background: none; border: none; color: rgba(255,255,255,0.5); font-size: 13px;
+  cursor: pointer; text-decoration: underline; font-family: inherit; padding: 6px;
+}
+.wiz-skip:hover { color: #fff; }
+#connectStatus { color: rgba(255,255,255,0.7); font-size: 13px; min-height: 18px; }
+
+/* ── HEADER ── */
+.header {
+  background: linear-gradient(135deg, #0d2137 0%, #1a3c5e 60%, #2a2a6e 100%);
+  display: flex; flex-direction: column;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  padding-top: env(safe-area-inset-top, 0);
+  position: sticky; top: 0; z-index: 20;
+}
+.header-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; min-height: 52px;
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header-actions { display: flex; align-items: center; gap: 6px; }
+.header-logo {
+  width: 34px; height: 34px; background: rgba(255,255,255,0.12);
+  border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px;
+}
+.header-title h1 { color: #fff; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.header-title p  { color: rgba(255,255,255,0.5); font-size: 11px; margin-top: 1px; display: flex; align-items: center; gap: 6px; }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: #e74c3c; flex-shrink: 0; }
+.conn-dot.on { background: #27ae60; }
+.hdr-icon-btn {
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.08); border: 1.5px solid rgba(255,255,255,0.15);
+  border-radius: 7px; color: rgba(255,255,255,0.6);
+  cursor: pointer; transition: all 0.15s; text-decoration: none; flex-shrink: 0;
+  font-family: inherit;
+}
+.hdr-icon-btn:hover { background: rgba(255,255,255,0.18); color: #fff; border-color: rgba(255,255,255,0.3); }
+.header-bottom {
+  display: flex; align-items: center; gap: 4px;
+  padding: 0 16px; min-height: 48px;
+  background: rgba(0,0,0,0.15);
+}
+.hdr-class-tabs { display: flex; gap: 2px; flex: 1; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cls-tab {
+  padding: 5px 14px; border-radius: 6px; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 700; transition: all 0.15s; font-family: inherit;
+  background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.55); white-space: nowrap;
+}
+.cls-tab:hover { background: rgba(255,255,255,0.16); color: #fff; }
+.cls-tab.active { background: #1a1a2e; color: #fff; }
+.add-class-btn { font-size: 18px; line-height: 1; padding: 2px 10px; color: rgba(255,255,255,0.4); }
+.add-class-btn:hover { color: #fff; }
+.hdr-divider { width: 1px; height: 20px; background: rgba(255,255,255,0.18); margin: 0 8px; flex-shrink: 0; }
+.hdr-right-controls { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+nav#nav { display: flex; align-items: center; gap: 4px; }
+.q-btn {
+  padding: 5px 14px; border-radius: 6px; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 700; transition: all 0.15s; font-family: inherit;
+  background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); white-space: nowrap;
+}
+.q-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
+.q-btn.active { background: #fff; color: #1a3c5e; }
+.compact-btn {
+  padding: 5px 14px; border-radius: 6px; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 700; transition: all 0.15s; font-family: inherit;
+  background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); white-space: nowrap;
+}
+.compact-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
+.compact-btn.active { background: #fff; color: #1a3c5e; }
+
+/* ── SAVE INDICATOR (ambient status pill, same as Roll Call!) ── */
+.save-indicator {
+  font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 10px;
+  transition: all 0.2s; opacity: 0; white-space: nowrap;
+}
+.save-indicator.saving  { background: #fef5ea; color: #e67e22; opacity: 1; }
+.save-indicator.saved   { background: #eafaf1; color: #27ae60; opacity: 1; }
+.save-indicator.error   { background: #fdeaea; color: #e74c3c; opacity: 1; }
+.save-indicator.syncing { background: #eef2ff; color: #5b6fcc; opacity: 1; }
+.save-indicator.queued  { background: #eef2ff; color: #5b6fcc; opacity: 1; }
+
+/* ── MAIN ── */
+main { padding: 20px; max-width: 1000px; margin: 0 auto; }
+.view { display: none; }
+.view.active { display: block; }
+
+/* ── PANELS ── */
+.panel {
+  background: #fff; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  overflow: hidden; margin-bottom: 16px;
+}
+.panel-header { padding: 16px 20px 0; }
+.panel-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.panel-title h2 { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.panel-title p  { font-size: 11px; color: #8a9bb0; margin-top: 2px; }
+.panel-body { padding: 14px 20px 20px; }
+
+/* ── FORMS ── */
+label {
+  display: block; font-size: 10px; font-weight: 700; color: #8a9bb0;
+  letter-spacing: 0.8px; text-transform: uppercase; margin: 12px 0 6px;
+}
+label b, label code { text-transform: none; letter-spacing: normal; }
+input[type=text], input[type=number], input[type=url], select {
+  width: 100%; padding: 9px 12px; border: 1.5px solid #e0e4ea; border-radius: 8px;
+  font-size: 13px; background: #fff; color: #1a1a2e; font-family: inherit; outline: none;
+}
+input:focus, select:focus { border-color: #5b6fcc; }
+input::placeholder { color: #b0bcc8; }
+#grFast { font-family: ui-monospace, Consolas, monospace; letter-spacing: 2px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > * { flex: 1; min-width: 130px; }
+
+/* ── BUTTONS ── */
+.btn {
+  display: inline-block; border: 1.5px solid #5b6fcc; background: #5b6fcc; color: #fff;
+  padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.btn:hover { background: #4a5fbb; border-color: #4a5fbb; }
+.btn.secondary { background: #fff; border-color: #e0e4ea; color: #6b7a8d; }
+.btn.secondary:hover { border-color: #5b6fcc; color: #5b6fcc; background: #fff; }
+.btn.danger { background: #e74c3c; border-color: #e74c3c; }
+.btn.danger:hover { background: #c0392b; border-color: #c0392b; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.small { padding: 5px 12px; font-size: 11px; }
+.action-btn {
+  padding: 4px 12px; border-radius: 6px; border: 1.5px solid #e0e4ea; background: #fff;
+  color: #6b7a8d; font-size: 11px; font-weight: 700; cursor: pointer;
+  font-family: inherit; transition: all 0.15s; white-space: nowrap;
+}
+.action-btn:hover { border-color: #5b6fcc; color: #5b6fcc; }
+.mode-btn {
+  padding: 5px 12px; border-radius: 20px; border: 1.5px solid #e0e4ea; background: #fff;
+  color: #6b7a8d; font-size: 11px; font-weight: 700; cursor: pointer;
+  font-family: inherit; transition: all 0.15s; white-space: nowrap;
+}
+.mode-btn:hover { border-color: #5b6fcc; color: #5b6fcc; }
+.mode-btn.active { background: #5b6fcc; border-color: #5b6fcc; color: #fff; }
+.toolbar { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+.hint { color: #8a9bb0; font-size: 12px; margin-top: 8px; }
+.toolbar .hint, .toolbar label { margin: 0; }
+.toolbar label {
+  display: flex; align-items: center; gap: 6px; text-transform: none;
+  letter-spacing: normal; font-size: 12px; font-weight: 600; color: #6b7a8d;
+}
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  background: #0d2137; color: #fff; border: 1.5px solid transparent;
+  padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 600;
+  opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 1100; max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+.toast.show { opacity: 1; }
+.toast.err { background: #fdeaea; color: #c0392b; border-color: #f0b0b0; }
+
+/* ── MODALS (same pattern as Roll Call!) ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  z-index: 1000; display: flex; align-items: center; justify-content: center;
+}
+.modal-panel {
+  background: #fff; border-radius: 14px; width: 480px; max-width: 95vw;
+  max-height: 90vh; display: flex; flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25); overflow: hidden;
+}
+.modal-header {
+  background: linear-gradient(135deg, #0d2137 0%, #1a3c5e 100%);
+  padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.modal-header h2 { color: #fff; font-size: 15px; font-weight: 700; }
+.modal-close {
+  background: rgba(255,255,255,0.12); border: none; color: #fff;
+  width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+  font-size: 13px; font-weight: 700; font-family: inherit;
+}
+.modal-close:hover { background: rgba(255,255,255,0.22); }
+.modal-body { padding: 20px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.modal-section-label {
+  font-size: 10px; font-weight: 700; color: #8a9bb0;
+  letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 8px;
+}
+.class-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; min-height: 4px; }
+.class-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; border-radius: 8px;
+  border: 1.5px solid #eef0f4; background: #fafbfc;
+}
+.class-row-name { font-size: 13px; font-weight: 600; color: #1a1a2e; flex: 1; margin-right: 10px; cursor: pointer; }
+.class-empty { font-size: 13px; color: #a0aab8; padding: 6px 0 10px; }
+.class-row-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+.class-action-btn {
+  padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  border: 1.5px solid #e0e4ea; background: #fff; color: #6b7a8d;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap; font-family: inherit;
+}
+.class-action-btn:hover        { border-color: #5b6fcc; color: #5b6fcc; }
+.class-action-btn.archive:hover{ border-color: #e67e22; color: #e67e22; }
+.class-action-btn.delete:hover { border-color: #e74c3c; color: #e74c3c; background: #fdeaea; }
+.class-action-btn.restore:hover{ border-color: #27ae60; color: #27ae60; }
+.class-action-btn.primary      { background: #5b6fcc; border-color: #5b6fcc; color: #fff; }
+.class-action-btn.primary:hover{ background: #4a5fbb; border-color: #4a5fbb; color: #fff; }
+.rename-input {
+  border: 1.5px solid #5b6fcc; border-radius: 6px; padding: 3px 8px;
+  font-size: 13px; font-weight: 600; color: #1a1a2e; outline: none;
+  font-family: inherit; flex: 1; min-width: 0;
+}
+.delete-warn { font-size: 11px; font-weight: 600; color: #e74c3c; }
+
+/* ── SCORES GRID (students × recent quizzes) ── */
+.gb-controls { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.gb-search { position: relative; flex: 1; min-width: 160px; }
+.gb-search input { padding-right: 30px; }
+.gb-search-clear {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  border: 0; background: none; color: #8a9bb0; cursor: pointer; font-size: 12px;
+  padding: 4px 6px; border-radius: 6px; font-family: inherit;
+}
+.gb-search-clear:hover { color: #e74c3c; background: #fdeaea; }
+.sort-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.sort-btn {
+  padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  border: 1.5px solid #e0e4ea; background: #fff; color: #8a9bb0;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.sort-btn:hover { border-color: #5b6fcc; color: #5b6fcc; }
+.sort-btn.active { background: #5b6fcc; border-color: #5b6fcc; color: #fff; }
+.gb-cols-btn {
+  padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  border: 1.5px solid #e0e4ea; background: #fff; color: #8a9bb0;
+  cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+.gb-cols-btn:hover { border-color: #5b6fcc; color: #5b6fcc; }
+
+.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.gb-table { width: 100%; border-collapse: collapse; }
+.gb-table thead th {
+  font-size: 10px; font-weight: 700; color: #8a9bb0; text-transform: uppercase;
+  letter-spacing: 0.6px; text-align: left; padding: 8px 10px;
+  border-bottom: 1.5px solid #e0e4ea; white-space: nowrap; background: #fff;
+}
+.gb-table th.gb-quiz-th { text-align: center; min-width: 74px; cursor: pointer; }
+.gb-table th.gb-quiz-th:hover .gb-q-name { color: #5b6fcc; text-decoration: underline; }
+.gb-q-name { display: block; font-size: 11px; color: #1a1a2e; text-transform: none; letter-spacing: 0; }
+.gb-q-date { display: block; font-size: 9px; color: #a0aab8; font-weight: 600; margin-top: 1px; }
+/* The name column stays put while the quiz columns scroll under it. */
+.gb-table th.gb-name-th, .gb-table td.gb-name-td {
+  position: sticky; left: 0; z-index: 1; background: #fff; min-width: 170px;
+}
+.gb-table tbody tr:hover td { background: #fafbfc; }
+.gb-table tbody tr:hover td.gb-name-td { background: #fafbfc; }
+.gb-table tbody td { padding: 8px 10px; border-bottom: 1px solid #f0f2f6; }
+.gb-student { display: flex; align-items: center; gap: 9px; }
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff;
+}
+/* ── AVATAR PALETTE (same as Roll Call!) ── */
+.av0{background:#5b6fcc}.av1{background:#27ae60}.av2{background:#e67e22}
+.av3{background:#e74c3c}.av4{background:#8e44ad}.av5{background:#0097a7}
+.av6{background:#c0392b}.av7{background:#1a6b3a}.av8{background:#2471a3}.av9{background:#d4ac0d}
+.gb-name-link { font-size: 13px; font-weight: 700; color: #1a1a2e; cursor: pointer; }
+.gb-name-link:hover { color: #5b6fcc; text-decoration: underline; }
+.gb-sid { font-size: 10px; color: #a0aab8; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* A score cell. The band class carries the meaning; `mt` means never taken —
+   which must never look like a real zero. */
+.gb-cell { text-align: center; }
+.pct {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 46px; padding: 5px 7px; border-radius: 8px;
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+  border: 1.5px solid transparent; font-family: inherit;
+}
+.pct.hi   { background: #eafaf1; color: #27ae60; border-color: #27ae60; }
+.pct.good { background: #eef1fd; color: #5b6fcc; border-color: #5b6fcc; }
+.pct.mid  { background: #fef5ea; color: #e67e22; border-color: #e67e22; }
+.pct.lo   { background: #fdeaea; color: #e74c3c; border-color: #e74c3c; }
+.pct.mt   { background: #f3f4f6; color: #c0cad5; border-color: #e8eaed; }
+button.pct { cursor: pointer; appearance: none; }
+button.pct:hover { filter: brightness(0.96); }
+.pct:focus-visible { outline: 2px solid #5b6fcc; outline-offset: 2px; }
+.gb-avg-td { text-align: center; }
+.gb-taken { font-size: 9px; color: #a0aab8; font-weight: 600; margin-top: 2px; }
+.gb-unmatched {
+  border: 1.5px solid #f5c6a5; background: #fef5ea; border-radius: 8px;
+  padding: 9px 12px; margin-bottom: 12px; font-size: 12px; color: #8a5a20;
+}
+.gb-unmatched b { color: #e67e22; }
+
+/* ── STUDENT DETAIL MODAL ── */
+.sd-head { display: flex; align-items: center; gap: 10px; }
+.sd-head h2 { margin: 0; }
+.sd-id { font-size: 11px; color: #8a9bb0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sd-stats { display: flex; gap: 8px; flex-wrap: wrap; }
+.sd-stat {
+  flex: 1; min-width: 78px; border: 1.5px solid #eef0f4; border-radius: 8px;
+  background: #fafbfc; padding: 9px 10px; text-align: center;
+}
+.sd-stat .v { font-size: 17px; font-weight: 700; color: #1a1a2e; font-variant-numeric: tabular-nums; }
+.sd-stat .k { font-size: 9px; font-weight: 700; color: #8a9bb0; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 2px; }
+.sd-row-meta { font-size: 10px; color: #a0aab8; font-weight: 600; }
+
+/* ── ROSTER controls (students modal) ── */
+.roster-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.as-mode-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.as-tab {
+  padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  border: 1.5px solid #e0e4ea; background: #fff; color: #8a9bb0;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.as-tab:hover { border-color: #5b6fcc; color: #5b6fcc; }
+.as-tab.active { background: #5b6fcc; border-color: #5b6fcc; color: #fff; }
+/* Nested inside #addStudentPanel, which already draws the card. */
+.paste-form-inner { border: 0; padding: 0; background: none; margin: 0; }
+.modal-actions { display: flex; gap: 8px; margin-bottom: 4px; }
+.paste-form {
+  border: 1.5px solid #e0e4ea; border-radius: 8px; padding: 12px;
+  background: #fafbfc; margin-bottom: 12px;
+}
+.paste-form label { margin-top: 8px; }
+.paste-form label:first-child { margin-top: 0; }
+.paste-form-actions { display: flex; gap: 8px; margin-top: 12px; }
+.cc-folder-row { display: flex; align-items: center; gap: 8px; }
+.cc-folder-row .folder-name {
+  font-size: 12px; color: #3a4050; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+/* The global input rule is width:100%, which would blow out this flex row. */
+.cc-folder-row input[type=text] { flex: 1; min-width: 0; padding: 5px 10px; font-size: 12px; }
+.cc-folder-row .folder-label { font-size: 12px; color: #8a9bb0; white-space: nowrap; flex-shrink: 0; }
+
+/* ── STUDENT IMPORT ── */
+.imp-upload-label {
+  display: inline-block; padding: 5px 12px; margin-bottom: 8px; border-radius: 6px;
+  font-size: 11px; font-weight: 700; border: 1.5px solid #e0e4ea; background: #fff;
+  color: #6b7a8d; cursor: pointer; transition: all 0.15s;
+}
+.imp-upload-label:hover { border-color: #5b6fcc; color: #5b6fcc; }
+.imp-text {
+  width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px; resize: vertical; border: 1.5px solid #c8cce0; border-radius: 6px; padding: 8px;
+}
+.imp-review-list {
+  max-height: 260px; overflow-y: auto; border: 1.5px solid #e0e4ea; border-radius: 8px;
+  padding: 6px; background: #fafbfc;
+}
+.imp-review-row {
+  display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 5px;
+  font-size: 12px; color: #1a1a2e; cursor: pointer; flex-wrap: wrap;
+}
+.imp-review-row:hover { background: #f0f2f5; }
+.imp-review-row.warn { background: #fff8ec; }
+.imp-review-id { font-variant-numeric: tabular-nums; color: #8a9bb0; font-weight: 700; min-width: 62px; }
+.imp-review-name { font-weight: 600; flex: 1; }
+.imp-review-warn { flex-basis: 100%; font-size: 11px; color: #c0392b; padding-left: 24px; }
+.imp-err { color: #e74c3c; font-size: 12px; margin-top: 6px; }
+
+/* ── BUBBLE GRID ── */
+.qgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 6px 18px; margin-top: 10px; }
+.qrow { display: flex; align-items: center; gap: 6px; }
+.qrow .qn { width: 30px; text-align: right; font-size: 12px; color: #8a9bb0; font-variant-numeric: tabular-nums; font-weight: 600; }
+.bub {
+  width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid #b0bcc8;
+  background: #fff; color: #6b7a8d; font-size: 11px; font-weight: 700;
+  cursor: pointer; padding: 0; line-height: 1; font-family: inherit; transition: all 0.1s;
+}
+.bub:hover { border-color: #5b6fcc; color: #5b6fcc; }
+.bub.sel { background: #1a1a2e; border-color: #1a1a2e; color: #fff; }
+
+/* ── QUIZ LIST ── */
+.quiz-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px 6px;
+  border-bottom: 1px solid #f3f4f6; cursor: pointer; border-radius: 6px;
+}
+.quiz-item:last-child { border-bottom: 0; }
+.quiz-item:hover { background: #f8f9fc; }
+.quiz-item .meta { color: #8a9bb0; font-size: 11px; margin-top: 1px; }
+.quiz-item .name { font-weight: 600; font-size: 13px; }
+.quiz-item .grow { flex: 1; min-width: 0; }
+.pill {
+  background: #fff; border: 1.5px solid #e0e4ea; border-radius: 20px;
+  padding: 4px 12px; font-size: 11px; font-weight: 700; color: #6b7a8d; white-space: nowrap;
+}
+
+/* ── RESULTS TABLES ── */
+table.results { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.results th, table.results td { padding: 8px; border-bottom: 1px solid #f3f4f6; text-align: left; }
+table.results th {
+  color: #8a9bb0; font-weight: 700; font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.score-big { font-size: 48px; font-weight: 800; text-align: center; margin: 8px 0 2px; font-variant-numeric: tabular-nums; }
+.score-sub { text-align: center; color: #8a9bb0; margin-bottom: 8px; font-size: 13px; }
+
+.empty-state { text-align: center; color: #a0aab8; padding: 48px 20px; font-size: 13px; }
+
+@media (max-width: 640px) {
+  main { padding: 10px; }
+  .header-top { padding: 0 12px; }
+}
+@media (max-width: 700px) {
+  /* Tighter view buttons so class tabs keep breathing room (dashboard pattern) */
+  .q-btn, .compact-btn { padding: 5px 10px; font-size: 12px; }
+  .hdr-divider { margin: 0 4px; }
+}
+@media (max-width: 560px) {
+  .qgrid { grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+  .bub { width: 34px; height: 34px; }
+}
+@media (pointer: coarse) {
+  .cls-tab, .q-btn, .compact-btn, .btn, .mode-btn, .action-btn, .class-action-btn { min-height: 44px; }
+  .hdr-icon-btn { width: 44px; height: 44px; border-radius: 10px; }
+}
+</style>
+</head>
+<body>
+
+<div id="connectScreen" class="hidden">
+  <h2>✏️ Connect Scantron!</h2>
+  <p class="connect-sub">
+    Scantron! keeps each class in its own Google Sheet — and creates those Sheets for you.<br>
+    One-time setup at <b>script.google.com</b>: <b>New project</b> → paste <code>Code.gs</code> →
+    <b>Deploy → New deployment → Web app</b> (Execute as <b>User accessing the web app</b>),
+    then paste the <code>/exec</code> URL here. After that, <b>+ Create New Class</b> does the rest.
+  </p>
+  <input type="url" id="connectUrl" placeholder="https://script.google.com/macros/s/…/exec" aria-label="Apps Script Web App URL">
+  <button class="connect-btn" id="btnConnect">Test &amp; Connect</button>
+  <button class="wiz-skip" id="btnConnectSkip">Skip for now</button>
+  <div id="connectStatus" role="status"></div>
+</div>
+
+<div class="header">
+  <div class="header-top">
+    <div class="header-left">
+      <div class="header-logo">✏️</div>
+      <div class="header-title">
+        <h1>Scantron!</h1>
+        <p><span class="conn-dot" id="connDot" title="connection"></span><span id="headerSubtitle">Bubble Sheet Grader</span></p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <a class="hdr-icon-btn" id="sheetLink" href="#" target="_blank" rel="noopener" aria-label="Open Google Sheet" style="visibility:hidden">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      </a>
+      <button class="hdr-icon-btn" id="hdrStudents" title="Students / import roster" aria-label="Students and roster import">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </button>
+      <button class="hdr-icon-btn" id="hdrPrint" title="Print answer sheets" aria-label="Print answer sheets">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      </button>
+      <button class="hdr-icon-btn" id="hdrSettings" title="Settings" aria-label="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="header-bottom">
+    <div class="hdr-class-tabs" id="classTabBar"></div>
+    <div class="hdr-right-controls">
+      <span class="save-indicator" id="saveIndicator" role="status"></span>
+      <div class="hdr-divider"></div>
+      <nav id="nav" aria-label="Views">
+        <button class="q-btn active" data-view="scores">Scores</button>
+        <button class="q-btn" data-view="quizzes">Quizzes</button>
+        <button class="q-btn" data-view="new">New Quiz</button>
+      </nav>
+      <button class="compact-btn" id="gradeBtn" data-view="grade" title="Grade responses">✅ Grade</button>
+    </div>
+  </div>
+</div>
+
+<main>
+
+  <!-- ============ SCORES (the class landing view) ============ -->
+  <section class="view active" id="view-scores">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title-row">
+          <div class="panel-title">
+            <h2>📈 Recent scores</h2>
+            <p>Every student against their most recent assessments — click a name for detail</p>
+          </div>
+          <button class="action-btn" id="btnRefreshScores" title="Reload scores from the Sheet">↻ Refresh</button>
+        </div>
+        <div class="gb-controls">
+          <div class="gb-search">
+            <input type="text" id="gbSearch" placeholder="Search students by name…" aria-label="Search students by name">
+            <button class="gb-search-clear hidden" id="gbSearchClear" title="Clear search" aria-label="Clear search">✕</button>
+          </div>
+          <div class="sort-btns" role="group" aria-label="Sort students">
+            <button class="sort-btn active" id="gbSortLast" title="Sort by last name">Last</button>
+            <button class="sort-btn" id="gbSortFirst" title="Sort by first name">First</button>
+            <button class="sort-btn" id="gbSortAvg" title="Sort by average score">Avg</button>
+          </div>
+          <button class="gb-cols-btn hidden" id="gbShowAll" title="Show every quiz"></button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="gbUnmatched" class="gb-unmatched hidden"></div>
+        <div class="tbl-wrap"><table class="gb-table" id="gbTable"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ QUIZZES ============ -->
+  <section class="view" id="view-quizzes">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title-row">
+          <div class="panel-title">
+            <h2>🗂 Your quizzes</h2>
+            <p>One tab per quiz in your Google Sheet — click a quiz for results</p>
+          </div>
+          <button class="action-btn" id="btnRefreshQuizzes">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="quizList"><div class="empty-state">Connect your Google Sheet in Settings, then refresh.</div></div>
+      </div>
+    </div>
+    <div class="panel" id="resultsCard" style="display:none">
+      <div class="panel-header">
+        <div class="panel-title-row">
+          <div class="panel-title">
+            <h2>📊 <span id="resultsTitle">Results</span></h2>
+            <p>Scores, per-student answers, and item analysis</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body" id="resultsBody"></div>
+    </div>
+  </section>
+
+  <!-- ============ NEW QUIZ ============ -->
+  <section class="view" id="view-new">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title-row">
+          <div class="panel-title">
+            <h2>✏️ Create a quiz</h2>
+            <p>Creates a new tab in your Google Sheet with the answer key in row 2</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="row">
+          <div style="flex:2"><label>Quiz name</label><input type="text" id="nqName" placeholder="Ch. 5 Vocabulary Quiz"></div>
+          <div><label>Questions</label>
+            <select id="nqCount">
+              <option>10</option><option selected>20</option><option>25</option><option>30</option><option>50</option><option>100</option>
+            </select></div>
+          <div><label>Choices</label>
+            <select id="nqChoices"><option value="4">A–D</option><option value="5" selected>A–E</option></select></div>
+        </div>
+        <label style="margin-top:16px">Answer key — tap the correct bubble for each question (leave blank to skip)</label>
+        <div class="qgrid" id="nqKeyGrid"></div>
+        <div class="toolbar">
+          <button class="btn" id="btnCreateQuiz">Create quiz → new sheet tab</button>
+          <button class="btn secondary" id="btnClearKey">Clear key</button>
+          <span class="hint" id="nqKeyCount"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ GRADE ============ -->
+  <section class="view" id="view-grade">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title-row">
+          <div class="panel-title">
+            <h2>✅ Grade responses</h2>
+            <p>Scan with the camera, upload a photo, or type answers — scores save to the quiz tab</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <label>Quiz</label>
+        <select id="grQuiz"></select>
+        <div class="toolbar" style="margin-top:12px">
+          <button class="mode-btn active" data-mode="camera" id="modeCamera">📷 Camera scan</button>
+          <button class="mode-btn" data-mode="photo">🖼 Photo upload</button>
+          <button class="mode-btn" data-mode="manual">⌨ Manual entry</button>
+        </div>
+
+        <div id="scanPanel" style="margin-top:12px">
+          <div id="camWrap" style="position:relative; display:none; border-radius:10px; overflow:hidden; background:#000">
+            <video id="camVideo" playsinline muted style="width:100%; display:block"></video>
+            <canvas id="camOverlay" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none"></canvas>
+          </div>
+          <div class="toolbar">
+            <button class="btn" id="btnCamStart">Start camera</button>
+            <button class="btn secondary" id="btnCamStop" style="display:none">Stop</button>
+            <!-- Hidden until there's actually a choice to make; see camListCameras. -->
+            <select id="camSelect" style="display:none" aria-label="Which camera to scan with"></select>
+            <label><input type="checkbox" id="chkAutoSave"> auto-save each scan</label>
+            <span class="hint" id="scanStatus">Point the camera at a filled answer sheet — all four corner squares must be in view.</span>
+          </div>
+          <div id="photoPanel" style="display:none">
+            <label>Upload a photo (or scan) of the answer sheet</label>
+            <input type="file" id="photoFile" accept="image/*">
+            <canvas id="photoDebug" style="display:none;max-width:100%;margin-top:10px;border:1px solid #e0e4ea;border-radius:8px"></canvas>
+          </div>
+        </div>
+
+        <!-- Review/override: opened from a quiz's results row when it has a saved
+             scan image. Shows the original sheet beside the editable grid below. -->
+        <div id="reviewPanel" style="display:none;margin-top:12px;border:1px solid #e0e4ea;border-radius:10px;padding:10px;background:#fafbfc">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <b style="font-size:13px">📷 Scanned sheet</b>
+            <button class="btn secondary" id="btnReviewClose" style="padding:4px 10px">Done reviewing</button>
+          </div>
+          <span class="hint" id="reviewStatus"></span>
+          <img id="reviewImg" alt="Scanned answer sheet" style="display:block;max-width:100%;margin-top:8px;border-radius:8px">
+        </div>
+
+        <div class="row">
+          <div><label>Student name</label><input type="text" id="grStudent" placeholder="First Last"></div>
+          <div><label>Student ID <span style="text-transform:none">(optional)</span></label><input type="text" id="grStudentId" inputmode="numeric"></div>
+        </div>
+        <label>Fast entry — type answers as letters (e.g. <b>ABCAD</b>); space or dash for blank</label>
+        <input type="text" id="grFast" autocomplete="off" autocapitalize="characters" placeholder="ABCAD…">
+        <label style="margin-top:14px">Or tap bubbles</label>
+        <div class="qgrid" id="grGrid"></div>
+        <div class="toolbar">
+          <button class="btn" id="btnScore">Score &amp; save to sheet</button>
+          <button class="btn secondary" id="btnGradeClear">Clear</button>
+          <span class="hint" id="grStatus"></span>
+        </div>
+        <div id="grResult"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" id="view-settings">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title-row">
+          <div class="panel-title">
+            <h2>⚙ Bridge connection</h2>
+            <p>One Apps Script deployment serves every class — currently on <b id="setClassName">this class</b></p>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <label>Apps Script Web App URL (ends in <code>/exec</code>)</label>
+        <input type="url" id="setUrl" placeholder="https://script.google.com/macros/s/…/exec">
+        <div class="toolbar">
+          <button class="btn" id="btnSaveUrl">Save &amp; test</button>
+          <span class="hint" id="setStatus"></span>
+        </div>
+        <div class="hint" style="margin-top:14px">
+          <b>Setup (once):</b> script.google.com → New project → paste <code>Code.gs</code> from this folder →
+          Run <code>setup</code> to authorize → Deploy → New deployment → Web app → Execute as
+          <b>User accessing the web app</b> → copy the <code>/exec</code> URL here. Your class list lives in
+          your own Google account, and each class gets its own Sheet.
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title-row">
+          <div class="panel-title">
+            <h2>📷 Save scanned sheets to Drive <span style="text-transform:none;font-weight:400;color:#8a9bb0">(optional)</span></h2>
+            <p>Keep a photo of each scanned sheet so you can review a paper and override an ambiguous read</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <label>Google OAuth Client ID</label>
+        <input type="text" id="setDriveClient" placeholder="…apps.googleusercontent.com" autocomplete="off">
+        <div class="toolbar">
+          <button class="btn" id="btnSaveDriveClient">Save</button>
+          <button class="btn secondary" id="btnDriveConnect">Connect Drive now</button>
+          <span class="hint" id="driveStatus"></span>
+        </div>
+        <div class="hint" style="margin-top:14px">
+          Create an OAuth <b>Web application</b> client at console.cloud.google.com → APIs &amp; Services →
+          Credentials, add this page's address under <b>Authorized JavaScript origins</b>, and paste the
+          Client ID here. Images upload to <code>Drive/Scantron/&lt;class&gt;/&lt;quiz&gt;</code> using the
+          <code>drive.file</code> scope, so this app only ever sees files it created — a grant kept separate
+          from the bridge's. Leave blank to keep scanned images on this device only.
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title-row">
+          <div class="panel-title">
+            <h2>⏸ Pending uploads</h2>
+            <p>Scores captured while offline wait here until the Sheet is reachable</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="queueInfo" class="hint" style="margin-top:0">No queued submissions.</div>
+        <div class="toolbar"><button class="btn secondary" id="btnFlushQueue">↻ Retry queued uploads</button></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Print answer sheets modal (printer icon in the header) -->
+<div id="printModal" class="modal-overlay hidden">
+  <div class="modal-panel" style="width:680px" role="dialog" aria-modal="true" aria-labelledby="printTitle">
+    <div class="modal-header">
+      <h2 id="printTitle">🖨 Print Answer Sheets</h2>
+      <button class="modal-close" id="btnPrintClose" title="Close print dialog" aria-label="Close print dialog">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="row">
+        <div><label>Form</label>
+          <select id="shForm">
+            <option value="20">20 questions</option>
+            <option value="50" selected>50 questions</option>
+            <option value="100">100 questions</option>
+          </select></div>
+        <div style="flex:2"><label>Sheet title <span style="text-transform:none">(optional)</span></label><input type="text" id="shTitle" placeholder="Period 3 — Biology"></div>
+      </div>
+      <div class="toolbar">
+        <button class="btn" id="btnPrintSheet">Print sheet</button>
+        <span class="hint">Print at <b>100% scale</b> (no “fit to page”) on plain white letter paper.</span>
+      </div>
+      <div id="sheetPreview" style="border:1px solid #e0e4ea; border-radius:8px; margin-top:14px; overflow:auto; max-height:52vh; background:#fff"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Manage classes modal (+ button in the class tab bar) -->
+<div id="manageModal" class="modal-overlay hidden">
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="manageTitle">
+    <div class="modal-header">
+      <h2 id="manageTitle">⚙ Manage Classes</h2>
+      <button class="modal-close" id="btnManageClose" title="Close manage classes dialog" aria-label="Close manage classes dialog">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section-label">Active Classes</div>
+      <div id="classList" class="class-list"></div>
+
+      <div id="createClassForm" class="paste-form hidden">
+        <label>Class name</label>
+        <input type="text" id="ccName" placeholder="Period 3 — Biology">
+        <label>Drive folder <span style="text-transform:none">(optional — where the new Sheet is saved)</span></label>
+        <div id="ccFolderRow" class="cc-folder-row"></div>
+        <div class="hint" id="ccStatus"></div>
+        <div class="paste-form-actions">
+          <button class="class-action-btn primary" id="btnCreateClass" title="Create a new Google Sheet for this class">Create</button>
+          <button class="class-action-btn" id="btnCreateClassCancel" title="Cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div id="addSheetForm" class="paste-form hidden">
+        <label>Class name</label>
+        <input type="text" id="esName" placeholder="Period 3 — Biology">
+        <label>Google Sheet link or ID</label>
+        <input type="text" id="esSheet" placeholder="https://docs.google.com/spreadsheets/d/…">
+        <div class="hint" id="esStatus"></div>
+        <div class="paste-form-actions">
+          <button class="class-action-btn primary" id="btnAddSheet" title="Check the Sheet and add it as a class">Check &amp; add</button>
+          <button class="class-action-btn" id="btnAddSheetCancel" title="Cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="class-action-btn primary" id="btnShowCreateClass" title="Create a new class">+ Create New Class</button>
+        <button class="class-action-btn" id="btnShowAddSheet" title="Link a Google Sheet you already have">+ Add Existing Sheet</button>
+      </div>
+      <div class="hint">Creating a class makes a new Google Sheet in your Drive whose first tab is
+        <code>student-info</code> (the roster). Every quiz you create becomes another tab in that same Sheet.
+        Archiving hides a class without touching its Sheet; deleting an archived class removes it from
+        Scantron only — the Sheet stays in your Drive and can be re-linked with “Add Existing Sheet”.</div>
+
+      <div id="archivedSection" class="hidden">
+        <div class="modal-section-label" style="margin-top:18px">Archived</div>
+        <div id="archivedClassList" class="class-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Students / roster import modal (👥 button in the header) -->
+<div id="studentsModal" class="modal-overlay hidden">
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="studentsTitle">
+    <div class="modal-header">
+      <h2 id="studentsTitle">👥 Students</h2>
+      <button class="modal-close" id="btnStudentsClose" title="Close students dialog" aria-label="Close students dialog">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section-label">Roster — <span id="stClassName">this class</span></div>
+
+      <div class="roster-controls">
+        <div class="gb-search">
+          <input type="text" id="rosterSearch" placeholder="Search students by name or ID…" aria-label="Search the roster">
+          <button class="gb-search-clear hidden" id="rosterSearchClear" title="Clear search" aria-label="Clear search">✕</button>
+        </div>
+        <div class="sort-btns" role="group" aria-label="Sort the roster">
+          <button class="sort-btn active" id="rosterSortLast" title="Sort by last name">Last</button>
+          <button class="sort-btn" id="rosterSortFirst" title="Sort by first name">First</button>
+        </div>
+      </div>
+      <div id="rosterList" class="class-list"></div>
+
+      <div id="addStudentPanel" class="paste-form hidden">
+        <div class="as-mode-tabs" role="group" aria-label="How to add students">
+          <button class="as-tab active" id="asModeSingle">Single</button>
+          <button class="as-tab" id="asModeBatch">Batch</button>
+        </div>
+
+        <div id="asSinglePane">
+          <label>Student ID</label>
+          <input type="text" id="asId" placeholder="10432">
+          <label>Last name</label>
+          <input type="text" id="asLast" placeholder="Smith">
+          <label>First name</label>
+          <input type="text" id="asFirst" placeholder="Jane">
+          <div id="asError" class="imp-err" style="display:none"></div>
+          <div class="paste-form-actions">
+            <button class="class-action-btn primary" id="btnAddOne" title="Add this student to the roster">Add student</button>
+            <button class="class-action-btn" id="btnAddOneCancel" title="Cancel">Cancel</button>
+          </div>
+        </div>
+
+        <div id="asBatchPane" class="hidden">
+      <div id="impEditView" class="paste-form-inner">
+        <label>Paste one student per line — <b>ID, Last, First</b></label>
+        <label class="imp-upload-label" for="impFile">📂 Load from CSV file</label>
+        <input type="file" id="impFile" accept=".csv,.txt" style="display:none">
+        <textarea id="impText" rows="8" class="imp-text"
+                  placeholder="10432, Smith, Jane&#10;10433, Doe, John&#10;…"></textarea>
+        <div class="hint">The ID lands in column A, "Last, First" in column B; columns C and D
+          split out the last and first name automatically.</div>
+        <div id="impError" class="imp-err" style="display:none"></div>
+        <div class="paste-form-actions">
+          <button class="class-action-btn primary" id="btnImpReview" title="Review the parsed rows before importing">Review…</button>
+          <button class="class-action-btn" id="btnImpCancel" title="Cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div id="impReviewView" class="paste-form-inner hidden">
+        <div class="hint" style="margin:0 0 8px">Check the parsed rows before importing — untick anything
+          that looks wrong (a pasted header row, or a line with extra columns).</div>
+        <div id="impReviewList" class="imp-review-list"></div>
+        <div class="hint" id="impReviewCount"></div>
+        <div class="paste-form-actions">
+          <button class="class-action-btn primary" id="btnImpConfirm" title="Import these students">Import students</button>
+          <button class="class-action-btn" id="btnImpBack" title="Back to edit">← Back to edit</button>
+        </div>
+      </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="class-action-btn primary" id="btnShowImport" title="Add one student or import a whole roster">+ Add Students</button>
+        <button class="class-action-btn" id="btnRefreshRoster" title="Reload the roster from the Sheet">↻ Refresh</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- One student's scores across every quiz (click a name in the Scores grid) -->
+<div id="studentModal" class="modal-overlay hidden">
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="sdName">
+    <div class="modal-header">
+      <div class="sd-head">
+        <div class="avatar" id="sdAvatar"></div>
+        <div>
+          <h2 id="sdName">Student</h2>
+          <div class="sd-id" id="sdId"></div>
+        </div>
+      </div>
+      <button class="modal-close" id="btnStudentClose" title="Close student dialog" aria-label="Close student dialog">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="sd-stats" id="sdStats"></div>
+      <div class="modal-section-label" style="margin-top:16px">Scores</div>
+      <div id="sdScores" class="class-list"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="srLive" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<script>
+'use strict';
+/* ============================ PWA service worker ============================ */
+/**
+ * Register the app-shell service worker (sw.js) so the installed home-screen PWA
+ * keeps scanning through a flaky network. Deliberately registered HERE, inside
+ * the single <script> block — the OMR/import tests extract that block by regex
+ * and a second <script> tag would break them; sw.js stays a separate file.
+ *
+ * Feature-gated so it is a no-op where it can't or shouldn't run: the file://
+ * disk build, and the Node test sandbox (whose navigator has no serviceWorker
+ * and whose window has no addEventListener).
+ */
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator &&
+    typeof window !== 'undefined' && typeof window.addEventListener === 'function' &&
+    typeof location !== 'undefined' && location.protocol !== 'file:') {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+/* ============================ state & storage ============================ */
+/**
+ * Empty here, and rewritten by the bridge when the bridge is the one serving
+ * this page (Code.gs → serveApp). That is how the Served build knows its own
+ * /exec URL: HtmlService sandboxes this page onto a googleusercontent.com
+ * origin, so window.location is the sandbox, not the web app — the page cannot
+ * discover its bridge on its own, and only the server can tell it.
+ *
+ * Opened from file:// the constant stays '' and the connect screen asks, exactly
+ * as before. store.bridgeUrl consults localStorage FIRST, so a URL a teacher
+ * pasted by hand still wins over the baked-in one.
+ *
+ * serveApp() matches this line by regex — keep it a single-quoted one-liner.
+ */
+const DEFAULT_BRIDGE_URL = '';
+
+/**
+ * True only in the build the bridge serves. Flipped by serveApp() the same way
+ * DEFAULT_BRIDGE_URL is, because the server is the only party that knows for
+ * certain — sniffing window.self !== window.top would be a guess.
+ *
+ * What it's for: HtmlService serves this page inside a sandbox iframe that does
+ * not grant camera permission, so getUserMedia there fails with
+ *   "Permissions policy violation: camera is not allowed in this document."
+ * This is Google's iframe, not ours — there is no allow="camera" we can reach
+ * and no way to fix it from Apps Script. So the Served build hides camera mode
+ * rather than offering a button that cannot work. Photo mode is unaffected (a
+ * plain file input, which on a phone opens the camera app anyway), and the
+ * file:// build keeps live scanning.
+ *
+ * serveApp() matches this line by regex — keep it a bare boolean one-liner.
+ */
+const SERVED_BUILD = false;
+
+/**
+ * Central-bridge model (same shape as Roll Call!): ONE Apps Script deployment
+ * serves every class, and each class is its own Google Sheet that the bridge
+ * generates on demand. The authoritative class registry lives server-side in
+ * the teacher's User Properties; `store.classes` is only a local cache of the
+ * last listClasses response, so the tab bar can paint before the network
+ * answers. Tab 1 of every class Sheet is "student-info" (the roster); every
+ * later tab is a quiz.
+ *
+ * classes = [{ id, name, sheetId, sheetUrl, archived }] — `id` is assigned by
+ * the bridge (a slug of the name), NOT by this page.
+ */
+const store = {
+  get bridgeUrl() { return localStorage.getItem('scantron.bridgeUrl') || DEFAULT_BRIDGE_URL; },
+  set bridgeUrl(v) { localStorage.setItem('scantron.bridgeUrl', v || ''); },
+  get classes() { try { return JSON.parse(localStorage.getItem('scantron.classes')) || []; } catch { return []; } },
+  set classes(v) { localStorage.setItem('scantron.classes', JSON.stringify(v)); },
+  get currentClass() { return localStorage.getItem('scantron.currentClass') || ''; },
+  set currentClass(v) { localStorage.setItem('scantron.currentClass', v || ''); },
+  get sheetUrl() { const c = currentCls(); return (c && c.sheetUrl) || ''; },
+  get quizzes() {
+    const c = currentCls();
+    if (!c) return [];
+    try { return JSON.parse(localStorage.getItem('scantron.quizzes.' + c.id)) || []; } catch { return []; }
+  },
+  set quizzes(v) {
+    const c = currentCls();
+    if (c) localStorage.setItem('scantron.quizzes.' + c.id, JSON.stringify(v));
+  },
+  get queue() { try { return JSON.parse(localStorage.getItem('scantron.queue')) || []; } catch { return []; } },
+  set queue(v) { localStorage.setItem('scantron.queue', JSON.stringify(v)); },
+  // Which camera to scan with. A doc cam is a second camera next to the built-in
+  // webcam, and Chrome hands out the *default* one — so the choice has to be
+  // remembered, or every session starts pointed at the teacher's face.
+  get cameraId() { return localStorage.getItem('scantron.cameraId') || ''; },
+  set cameraId(v) { localStorage.setItem('scantron.cameraId', v || ''); },
+  // OAuth "Web application" Client ID for saving scanned sheet images to the
+  // teacher's own Google Drive (front-end drive.file grant, independent of the
+  // bridge's auth — see the scanned-image section). Empty → images stay on this
+  // device only; the feature is opt-in.
+  get driveClientId() { return localStorage.getItem('scantron.driveClientId') || ''; },
+  set driveClientId(v) { localStorage.setItem('scantron.driveClientId', v || ''); },
+};
+function currentCls() {
+  const id = store.currentClass;
+  return store.classes.find(c => c.id === id) || null;
+}
+const $ = id => document.getElementById(id);
+const LETTERS = 'ABCDEFGHIJ';
+
+function toast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.className = 'toast', 3200);
+  if (isErr) announce(msg);
+}
+
+/* Screen-reader live region (same pattern as Roll Call!) */
+let _lastAnnounce = '';
+function announce(msg) {
+  const el = $('srLive');
+  if (!el || !msg) return;
+  if (msg === _lastAnnounce) el.textContent = '';
+  _lastAnnounce = msg;
+  setTimeout(() => { el.textContent = msg; }, 30);
+}
+
+/* Ambient save-state pill in the header (suite-shared pattern) */
+function showSaveState(state, n) {
+  const el = $('saveIndicator');
+  el.className = 'save-indicator' + (state ? ' ' + state : '');
+  if      (state === 'saving')  el.textContent = '⏳ Saving…';
+  else if (state === 'saved')   { el.textContent = '✓ Saved'; setTimeout(() => { if (el.className === 'save-indicator saved') el.className = 'save-indicator'; }, 2000); }
+  else if (state === 'error')   { el.textContent = '✕ Save failed'; announce('Save failed.'); }
+  else if (state === 'syncing') el.textContent = '↻ Syncing…';
+  else if (state === 'queued')  { el.textContent = '⏸ Offline — ' + n + ' queued'; announce('Offline. ' + n + ' submission' + (n === 1 ? '' : 's') + ' queued.'); }
+  else el.textContent = '';
+}
+
+/* ============================ API ============================ */
+/**
+ * Transport is JSONP, not fetch — the same choice the sibling app's bridge makes,
+ * for the same reason. The bridge is deployed "Execute as: User accessing the web
+ * app", so Google requires a signed-in caller and never serves it anonymously. A
+ * cross-origin fetch() from a file:// page sends no Google session, gets 302'd to
+ * a login page that carries no CORS headers, and surfaces as a bare "Failed to
+ * fetch". A <script> tag isn't subject to CORS and does send the session cookie.
+ * So every call — reads and writes alike — is a GET with a ?callback=.
+ *
+ * Query strings are hand-rolled rather than built with URLSearchParams: the
+ * headless test sandbox that evaluates this script doesn't define it.
+ */
+let _jsonpSeq = 0;
+function jsonpCall(url, params, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (!url) return reject(new Error('Not connected — paste your bridge URL in ⚙ Settings.'));
+    const cbName = '_scantronCb' + (++_jsonpSeq);
+    const parts = [];
+    Object.keys(params).forEach(k => {
+      const v = params[k];
+      if (v === undefined || v === null) return;
+      const s = (typeof v === 'object') ? JSON.stringify(v) : String(v);
+      parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(s));
+    });
+    parts.push('callback=' + cbName);
+
+    const script = document.createElement('script');
+    let timer = null;
+    const cleanup = () => {
+      delete window[cbName];
+      if (timer) clearTimeout(timer);
+      if (script.parentNode) script.parentNode.removeChild(script);
+    };
+    window[cbName] = data => { cleanup(); resolve(data); };
+    // A <script> tag reports every failure the same way, so the message has to
+    // cover all of them: bad URL, undeployed app, or not signed in to Google.
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('Could not reach the bridge. Check the /exec URL, that the Web App is ' +
+                       'deployed, and that you are signed in to the Google account that owns it.'));
+    };
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('The bridge did not respond in time. Check the deployment and try again.'));
+    }, timeoutMs || 30000);
+
+    script.src = url + '?' + parts.join('&');
+    document.head.appendChild(script);
+  });
+}
+
+async function apiTo(url, action, payload = {}) {
+  const data = await jsonpCall(url, { action, ...payload });
+  if (!data || !data.ok) throw new Error((data && data.error) || 'Unknown server error');
+  return data;
+}
+
+/** Stable id so a retried write that already landed is not applied twice. */
+function newWriteId() {
+  return 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+const WRITE_ACTIONS = new Set([
+  'createClass', 'registerClass', 'updateClass', 'deleteClass',
+  'createQuiz', 'submit', 'updateKey', 'deleteQuiz', 'addStudents',
+]);
+/**
+ * Actions the bridge answers without opening a class Sheet. Everything else is
+ * class-scoped, so api() stamps the selected classId on it — that way call
+ * sites (createQuiz, submit, getResults, …) never have to thread it through.
+ */
+const CLASS_MGMT_ACTIONS = new Set([
+  'ping', 'listClasses', 'createClass', 'registerClass', 'inspectSheet',
+  'updateClass', 'deleteClass', 'getToken',
+]);
+async function api(action, payload = {}) {
+  const body = { ...payload };
+  if (!CLASS_MGMT_ACTIONS.has(action) && body.classId == null) {
+    if (!store.currentClass) throw new Error('No class selected — create one with + in the class bar.');
+    body.classId = store.currentClass;
+  }
+  // Only mint a writeId when the caller hasn't already — a queued scan carries
+  // its own from the moment it was graded, so its retries dedupe against the
+  // original attempt rather than looking like a fresh write each time.
+  if (WRITE_ACTIONS.has(action) && body.writeId == null) body.writeId = newWriteId();
+  return apiTo(store.bridgeUrl, action, body);
+}
+
+function setConn(on) { $('connDot').classList.toggle('on', !!on); }
+
+/* ============================ connect screen (first run) ============================ */
+function isValidBridgeUrl(url) {
+  return /^https:\/\/script\.google(?:usercontent)?\.com\/.+\/exec$/.test(url);
+}
+async function testAndConnect(inputId, statusId) {
+  const st = $(statusId);
+  const url = ($(inputId).value || '').trim().replace(/\?.*$/, '').replace(/\/$/, '');
+  if (!isValidBridgeUrl(url)) {
+    st.textContent = '✕ That doesn’t look like an Apps Script Web App URL (should end in /exec).';
+    return false;
+  }
+  st.textContent = '⏳ Testing connection…';
+  try {
+    const data = await apiTo(url, 'ping');
+    store.bridgeUrl = url;
+    $('setUrl').value = url;
+    setConn(true);
+    st.textContent = '✓ Connected' + (data.email ? ' as ' + data.email : '') + ' — ' +
+      data.classCount + ' class' + (data.classCount === 1 ? '' : 'es') + ' on this account.';
+    toast('Connected ✓');
+    await syncClasses();
+    onConnected();
+    return true;
+  } catch (e) {
+    setConn(false);
+    st.textContent = '✕ ' + e.message;
+    return false;
+  }
+}
+
+/**
+ * Pull the authoritative class list from the bridge into the local cache. The
+ * bridge owns the registry, so this is the only thing that may write
+ * store.classes — every create/rename/remove re-syncs rather than guessing.
+ */
+async function syncClasses() {
+  const data = await api('listClasses');
+  store.classes = data.classes;
+  if (!currentCls()) store.currentClass = data.classes.length ? data.classes[0].id : '';
+  buildClassTabs();
+  applyCurrentClass();
+  // Scores are a view concern and paint their own loading state, so they are not
+  // awaited here — a slow or failed gradebook must not hold up class switching.
+  if (store.currentClass) { refreshGradebook(); await refreshQuizzes(); }
+  return data.classes;
+}
+$('btnConnect').addEventListener('click', async () => {
+  if (await testAndConnect('connectUrl', 'connectStatus')) $('connectScreen').classList.add('hidden');
+});
+$('connectUrl').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnConnect').click(); });
+$('btnConnectSkip').addEventListener('click', () => {
+  $('connectScreen').classList.add('hidden');
+  showView('settings');
+});
+
+/* ============================ navigation ============================ */
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
+$('hdrSettings').addEventListener('click', () => showView('settings'));
+function showView(name) {
+  document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  if (name === 'grade') refreshGradeQuizPicker();
+  // Scores go stale the moment a paper is scanned, so re-fetch on arrival if
+  // what we hold is from another class or from before the last scan.
+  if (name === 'scores' && store.currentClass && (!_gb || _gbClass !== store.currentClass)) refreshGradebook();
+  if (name === 'settings') {
+    renderQueueInfo();
+    const cls = currentCls();
+    $('setClassName').textContent = cls ? cls.name : 'your first class';
+    $('setUrl').value = store.bridgeUrl;
+    $('setDriveClient').value = store.driveClientId;
+  }
+  if (name !== 'grade' && window.camStop) camStop();
+}
+
+/* ============================ classes ============================ */
+function buildClassTabs() {
+  const bar = $('classTabBar');
+  bar.innerHTML = '';
+  store.classes.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'cls-tab' + (c.id === store.currentClass ? ' active' : '');
+    b.textContent = c.name;
+    b.addEventListener('click', () => switchClass(c.id));
+    bar.appendChild(b);
+  });
+  const add = document.createElement('button');
+  add.className = 'cls-tab add-class-btn';
+  add.textContent = '+';
+  add.title = 'Manage classes';
+  add.setAttribute('aria-label', 'Manage classes');
+  add.addEventListener('click', openManageModal);
+  bar.appendChild(add);
+}
+
+function switchClass(id) {
+  if (id === store.currentClass) return;
+  store.currentClass = id;
+  buildClassTabs();
+  applyCurrentClass();
+  // One bridge serves every class, so switching needs no reconnect — just the
+  // new class's quiz tabs and scores.
+  if (store.bridgeUrl && id) { refreshQuizzes(); refreshGradebook(); } else setConn(false);
+}
+
+/** Repaint everything that depends on which class is selected. */
+function applyCurrentClass() {
+  const cls = currentCls();
+  $('headerSubtitle').textContent = 'Bubble Sheet Grader' + (cls ? ' · ' + cls.name : '');
+  updateSheetLink();
+  $('resultsCard').style.display = 'none';
+  $('setUrl').value = store.bridgeUrl;
+  $('setClassName').textContent = cls ? cls.name : 'your first class';
+  // The old class's scores must not linger under the new class's name.
+  if (_gbClass !== store.currentClass) { _gb = null; _gbSearch = ''; $('gbSearch').value = ''; }
+  renderQuizList();
+  renderGradebook();
+  refreshGradeQuizPicker();
+}
+
+function updateSheetLink() {
+  const link = $('sheetLink');
+  const u = store.sheetUrl;
+  link.href = u || '#';
+  link.style.visibility = u ? 'visible' : 'hidden';
+}
+
+/* ============================ scores grid (the class landing view) ============================ */
+/**
+ * The gradebook is the roster crossed with recent quizzes, fetched whole by the
+ * bridge's getGradebook. It is memory-only and keyed by class: scores change
+ * every time a paper is scanned, so a stale cache on disk would be worse than a
+ * spinner. store.quizzes stays the Quizzes tab's own cache.
+ */
+let _gb = null;          // { quizzes, students, unmatched, totalQuizzes } for _gbClass
+let _gbClass = '';
+let _gbSort = 'last';    // 'last' | 'first' | 'avg'
+let _gbSearch = '';
+let _gbShowAll = false;
+let _gbLoading = false;
+let _gbErr = '';
+
+/** Quizzes shown by default. Older ones stay one click away — see #gbShowAll. */
+const GB_RECENT_COLS = 6;
+
+async function refreshGradebook() {
+  if (!store.currentClass) { _gb = null; renderGradebook(); return; }
+  _gbLoading = true;
+  renderGradebook();
+  try {
+    const data = await api('getGradebook');
+    // An old Apps Script deployment answers "Unknown action" (handled by api),
+    // but guard the shape too — a half-understood payload must land in the error
+    // path, not throw from inside the renderer and take the caller down with it.
+    if (!data || !Array.isArray(data.students) || !Array.isArray(data.quizzes)) {
+      throw new Error('Unexpected response — is the Apps Script deployment up to date?');
+    }
+    setConn(true);
+    _gb = data;
+    _gbClass = store.currentClass;
+    _gbErr = '';
+  } catch (e) {
+    _gb = null;
+    _gbErr = e.message;
+    toast('Could not load scores: ' + e.message, true);
+  } finally {
+    _gbLoading = false;
+    renderGradebook();
+  }
+}
+
+/** ≥90 green · ≥80 indigo · ≥70 amber · below that red. */
+function pctBand(p) {
+  if (p >= 90) return 'hi';
+  if (p >= 80) return 'good';
+  if (p >= 70) return 'mid';
+  return 'lo';
+}
+
+function initials(s) {
+  return ((s.first || '').charAt(0) + (s.last || '').charAt(0)).toUpperCase() ||
+         (s.name || '?').charAt(0).toUpperCase();
+}
+
+/** Stable per-student colour. The ID is a school ID (a string), so hash it. */
+function avatarClass(s) {
+  const key = String(s.id || s.name || '');
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return 'av' + (h % 10);
+}
+
+function gbVisibleStudents() {
+  if (!_gb) return [];
+  const q = _gbSearch.trim().toLowerCase();
+  let list = _gb.students.filter(s => {
+    if (!q) return true;
+    return (s.last + ' ' + s.first + ' ' + s.name + ' ' + s.id).toLowerCase().includes(q);
+  });
+  const by = {
+    last: (a, b) => (a.last || '').localeCompare(b.last || '') || (a.first || '').localeCompare(b.first || ''),
+    first: (a, b) => (a.first || '').localeCompare(b.first || '') || (a.last || '').localeCompare(b.last || ''),
+    // Ungraded students sort last rather than reading as a 0% average.
+    avg: (a, b) => (b.avg == null ? -1 : b.avg) - (a.avg == null ? -1 : a.avg),
+  };
+  return list.slice().sort(by[_gbSort] || by.last);
+}
+
+function renderGradebook() {
+  const table = $('gbTable');
+  const unmatchedEl = $('gbUnmatched');
+  const showAllBtn = $('gbShowAll');
+  unmatchedEl.classList.add('hidden');
+  showAllBtn.classList.add('hidden');
+
+  if (!currentCls()) {
+    table.innerHTML = '<tbody><tr><td><div class="empty-state">No class yet — click <b>+</b> in the class bar to create one. Scantron makes the Google Sheet for you.</div></td></tr></tbody>';
+    return;
+  }
+  if (_gbLoading && !_gb) {
+    table.innerHTML = '<tbody><tr><td><div class="empty-state">⏳ Loading scores…</div></td></tr></tbody>';
+    return;
+  }
+  if (!_gb) {
+    // "Unknown action" means the Apps Script deployment predates the Scores view,
+    // which is a redeploy, not a retry — say so instead of offering ↻ Refresh.
+    const stale = /Unknown action/i.test(_gbErr);
+    table.innerHTML = '<tbody><tr><td><div class="empty-state">' + (stale
+      ? '✕ Your Apps Script bridge is out of date — it doesn’t have the <code>getGradebook</code> action yet.<br>' +
+        'In the Apps Script editor: <b>Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy</b>, ' +
+        'then hit ↻ Refresh. The <code>/exec</code> URL stays the same.'
+      : '✕ Couldn’t load scores' + (_gbErr ? ' — ' + esc(_gbErr) : '') + '<br>Hit ↻ Refresh to try again.') +
+      '</div></td></tr></tbody>';
+    return;
+  }
+  if (!_gb.students.length) {
+    table.innerHTML = '<tbody><tr><td><div class="empty-state">No students yet — import your roster with the 👥 button.</div></td></tr></tbody>';
+    return;
+  }
+  if (!_gb.quizzes.length) {
+    table.innerHTML = '<tbody><tr><td><div class="empty-state">No quizzes yet — create one in the New Quiz tab, then scan some papers.</div></td></tr></tbody>';
+    return;
+  }
+
+  const quizzes = _gbShowAll ? _gb.quizzes : _gb.quizzes.slice(0, GB_RECENT_COLS);
+  if (_gb.quizzes.length > GB_RECENT_COLS) {
+    showAllBtn.classList.remove('hidden');
+    showAllBtn.textContent = _gbShowAll
+      ? 'Show recent ' + GB_RECENT_COLS
+      : 'Show all ' + _gb.quizzes.length;
+  }
+
+  table.innerHTML = '';
+  const thead = document.createElement('thead');
+  const hr = document.createElement('tr');
+  hr.appendChild(th('Student', 'gb-name-th'));
+  hr.appendChild(th('Avg', 'gb-quiz-th'));
+  quizzes.forEach(q => {
+    const cell = document.createElement('th');
+    cell.className = 'gb-quiz-th';
+    cell.title = 'Open results for “' + q.name + '”';
+    const n = document.createElement('span');
+    n.className = 'gb-q-name';
+    n.textContent = q.name;
+    const d = document.createElement('span');
+    d.className = 'gb-q-date';
+    d.textContent = q.created ? new Date(q.created).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+    cell.appendChild(n); cell.appendChild(d);
+    cell.addEventListener('click', () => openQuizResults(q.name));
+    hr.appendChild(cell);
+  });
+  thead.appendChild(hr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  const students = gbVisibleStudents();
+  if (!students.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = quizzes.length + 2;
+    td.innerHTML = '<div class="empty-state">No students match “' + esc(_gbSearch) + '”.</div>';
+    tr.appendChild(td); tbody.appendChild(tr);
+  }
+  students.forEach(s => {
+    const tr = document.createElement('tr');
+
+    const nameTd = document.createElement('td');
+    nameTd.className = 'gb-name-td';
+    const wrap = document.createElement('div');
+    wrap.className = 'gb-student';
+    const av = document.createElement('div');
+    av.className = 'avatar ' + avatarClass(s);
+    av.textContent = initials(s);
+    const txt = document.createElement('div');
+    const nm = document.createElement('div');
+    nm.className = 'gb-name-link';
+    nm.textContent = s.last ? s.last + ', ' + s.first : (s.name || '—');
+    nm.title = 'See this student’s scores';
+    nm.addEventListener('click', () => openStudentModal(s.id));
+    const sid = document.createElement('div');
+    sid.className = 'gb-sid';
+    sid.textContent = s.id ? '#' + s.id : '';
+    txt.appendChild(nm); txt.appendChild(sid);
+    wrap.appendChild(av); wrap.appendChild(txt);
+    nameTd.appendChild(wrap);
+    tr.appendChild(nameTd);
+
+    const avgTd = document.createElement('td');
+    avgTd.className = 'gb-avg-td';
+    avgTd.appendChild(pctEl(s.avg, s.avg == null ? 'No scores yet' : 'Average of ' + s.taken + ' quiz' + (s.taken === 1 ? '' : 'zes')));
+    const taken = document.createElement('div');
+    taken.className = 'gb-taken';
+    taken.textContent = s.taken ? s.taken + '/' + _gb.quizzes.length : '';
+    avgTd.appendChild(taken);
+    tr.appendChild(avgTd);
+
+    quizzes.forEach((q, qi) => {
+      const td = document.createElement('td');
+      td.className = 'gb-cell';
+      const sc = s.scores[qi];
+      const label = (s.last ? s.last + ', ' + s.first : s.name) + ' · ' + q.name;
+      if (!sc) {
+        td.appendChild(pctEl(null, label + ': not taken'));
+      } else {
+        const b = pctEl(sc.percent, label + ': ' + sc.score + '/' + sc.possible + ' — click for the full quiz', true);
+        b.addEventListener('click', () => openQuizResults(q.name));
+        td.appendChild(b);
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  if (_gb.unmatched && _gb.unmatched.length) {
+    unmatchedEl.classList.remove('hidden');
+    const names = _gb.unmatched.slice(0, 4)
+      .map(u => esc((u.student || '?') + (u.studentId ? ' (#' + u.studentId + ')' : '') + ' · ' + u.quiz))
+      .join(', ');
+    unmatchedEl.innerHTML = '<b>' + _gb.unmatched.length + ' scan' + (_gb.unmatched.length === 1 ? '' : 's') +
+      ' didn’t match anyone on the roster</b> — likely a mis-bubbled ID: ' + names +
+      (_gb.unmatched.length > 4 ? ', …' : '') + '. Fix the ID in the Sheet, or import the missing student.';
+  }
+}
+
+function th(label, cls) {
+  const el = document.createElement('th');
+  el.scope = 'col';
+  if (cls) el.className = cls;
+  el.textContent = label;
+  return el;
+}
+
+/** A percent pill. `null` renders the grey dash — never a 0. */
+function pctEl(percent, title, clickable) {
+  const el = document.createElement(clickable ? 'button' : 'div');
+  if (clickable) el.type = 'button';
+  if (percent == null) {
+    el.className = 'pct mt';
+    el.textContent = '–';
+  } else {
+    el.className = 'pct ' + pctBand(percent);
+    el.textContent = Math.round(percent) + '%';
+  }
+  if (title) el.title = title;
+  el.setAttribute('aria-label', title || '');
+  return el;
+}
+
+/** Jump to the Quizzes tab and open one quiz's results. */
+function openQuizResults(name) {
+  showView('quizzes');
+  openResults(name);
+}
+
+$('btnRefreshScores').addEventListener('click', refreshGradebook);
+$('gbShowAll').addEventListener('click', () => { _gbShowAll = !_gbShowAll; renderGradebook(); });
+$('gbSearch').addEventListener('input', e => {
+  _gbSearch = e.target.value;
+  $('gbSearchClear').classList.toggle('hidden', !_gbSearch);
+  renderGradebook();
+});
+$('gbSearchClear').addEventListener('click', () => {
+  _gbSearch = ''; $('gbSearch').value = '';
+  $('gbSearchClear').classList.add('hidden');
+  renderGradebook();
+});
+[['gbSortLast', 'last'], ['gbSortFirst', 'first'], ['gbSortAvg', 'avg']].forEach(([id, key]) => {
+  $(id).addEventListener('click', () => {
+    _gbSort = key;
+    ['gbSortLast', 'gbSortFirst', 'gbSortAvg'].forEach(o => $(o).classList.toggle('active', o === id));
+    renderGradebook();
+  });
+});
+
+/* ---------- one student's scores across every quiz ---------- */
+function openStudentModal(studentId) {
+  if (!_gb) return;
+  const s = _gb.students.find(x => String(x.id) === String(studentId));
+  if (!s) return;
+
+  $('sdAvatar').className = 'avatar ' + avatarClass(s);
+  $('sdAvatar').textContent = initials(s);
+  $('sdName').textContent = s.last ? s.last + ', ' + s.first : (s.name || 'Student');
+  $('sdId').textContent = s.id ? 'ID #' + s.id : 'No ID on the roster';
+
+  const taken = s.scores.filter(Boolean);
+  const best = taken.length ? Math.max(...taken.map(x => x.percent)) : null;
+  const low = taken.length ? Math.min(...taken.map(x => x.percent)) : null;
+  $('sdStats').innerHTML = '';
+  [['Average', s.avg == null ? '–' : Math.round(s.avg) + '%'],
+   ['Best', best == null ? '–' : Math.round(best) + '%'],
+   ['Lowest', low == null ? '–' : Math.round(low) + '%'],
+   ['Taken', s.taken + '/' + _gb.quizzes.length]].forEach(([k, v]) => {
+    const d = document.createElement('div');
+    d.className = 'sd-stat';
+    d.innerHTML = '<div class="v"></div><div class="k"></div>';
+    d.querySelector('.v').textContent = v;
+    d.querySelector('.k').textContent = k;
+    $('sdStats').appendChild(d);
+  });
+
+  const list = $('sdScores');
+  list.innerHTML = '';
+  _gb.quizzes.forEach((q, qi) => {
+    const sc = s.scores[qi];
+    const row = document.createElement('div');
+    row.className = 'class-row';
+    const left = document.createElement('div');
+    left.style.cssText = 'flex:1;margin-right:10px;min-width:0';
+    const n = document.createElement('div');
+    n.className = 'class-row-name';
+    n.style.cursor = 'default';
+    n.textContent = q.name;
+    const meta = document.createElement('div');
+    meta.className = 'sd-row-meta';
+    meta.textContent = sc
+      ? sc.score + '/' + sc.possible + ' points'
+      : (q.created ? 'Not taken · ' + new Date(q.created).toLocaleDateString() : 'Not taken');
+    left.appendChild(n); left.appendChild(meta);
+    const actions = document.createElement('div');
+    actions.className = 'class-row-actions';
+    actions.appendChild(pctEl(sc ? sc.percent : null, sc ? '' : 'No scan on file'));
+    row.appendChild(left); row.appendChild(actions);
+    list.appendChild(row);
+  });
+  if (!_gb.quizzes.length) list.innerHTML = '<div class="class-empty">No quizzes yet.</div>';
+
+  $('studentModal').classList.remove('hidden');
+}
+function closeStudentModal() { $('studentModal').classList.add('hidden'); }
+$('btnStudentClose').addEventListener('click', closeStudentModal);
+$('studentModal').addEventListener('click', e => { if (e.target === $('studentModal')) closeStudentModal(); });
+
+/* ---------- manage classes modal ---------- */
+
+/**
+ * The modal is the one place that shows archived classes, and store.classes
+ * deliberately holds only active ones (syncClasses owns that cache — see above).
+ * So the archived-inclusive list lives here as a transient view of the bridge's
+ * answer, and is never written back to the cache.
+ */
+let _manageClasses = [];
+
+function openManageModal() {
+  _manageClasses = store.classes;   // paint from cache first, so the list never flashes empty
+  renderClassList();
+  $('manageModal').classList.remove('hidden');
+  refreshManageModal();
+}
+function closeManageModal() {
+  $('manageModal').classList.add('hidden');
+  hideCreateForm();
+  $('addSheetForm').classList.add('hidden');
+}
+$('btnManageClose').addEventListener('click', closeManageModal);
+$('manageModal').addEventListener('click', e => { if (e.target === $('manageModal')) closeManageModal(); });
+
+/** Pull the archived-inclusive list. On failure the current render stays put. */
+async function refreshManageModal() {
+  if (!store.bridgeUrl) return;
+  try {
+    const data = await api('listClasses', { includeArchived: true });
+    _manageClasses = data.classes;
+    renderClassList();
+  } catch (e) { /* leave the current render in place */ }
+}
+
+function renderClassList() {
+  const list = $('classList');
+  const archList = $('archivedClassList');
+  const archSec = $('archivedSection');
+  list.innerHTML = '';
+  archList.innerHTML = '';
+  archSec.classList.add('hidden');
+
+  if (!store.bridgeUrl) {
+    list.innerHTML = '<div class="class-empty">Not connected yet — paste your bridge URL in ⚙ Settings first.</div>';
+    return;
+  }
+  const active = _manageClasses.filter(c => !c.archived);
+  const archived = _manageClasses.filter(c => c.archived);
+
+  if (!active.length) {
+    list.innerHTML = '<div class="class-empty">No active classes — add one below.</div>';
+  } else {
+    active.forEach(c => list.appendChild(classRow(c)));
+  }
+  if (archived.length) {
+    archSec.classList.remove('hidden');
+    archived.forEach(c => archList.appendChild(classRow(c)));
+  }
+}
+
+/** One row: name + the actions that apply to it. Archived rows get Restore/Delete. */
+function classRow(c) {
+  const row = document.createElement('div');
+  row.className = 'class-row';
+
+  const name = document.createElement('span');
+  name.className = 'class-row-name';
+  name.textContent = (c.id === store.currentClass ? '✓ ' : '') + c.name;
+  const actions = document.createElement('div');
+  actions.className = 'class-row-actions';
+
+  if (c.archived) {
+    actions.appendChild(rowBtn('Restore', 'restore', 'Make this class active again', () => restoreClass(c)));
+    actions.appendChild(rowBtn('Delete', 'delete', 'Remove this class from Scantron', () => confirmDeleteClass(c, row)));
+  } else {
+    name.title = 'Switch to this class';
+    name.addEventListener('click', () => { switchClass(c.id); closeManageModal(); });
+
+    const sheet = document.createElement('a');
+    sheet.className = 'class-action-btn';
+    sheet.textContent = 'Sheet ↗';
+    sheet.href = c.sheetUrl || '#';
+    sheet.target = '_blank'; sheet.rel = 'noopener';
+    sheet.title = 'Open this class’s Google Sheet';
+    actions.appendChild(sheet);
+    actions.appendChild(rowBtn('Rename', '', 'Rename this class', () => startRename(c, name, actions)));
+    actions.appendChild(rowBtn('Archive', 'archive', 'Hide this class without deleting it', () => archiveClass(c)));
+  }
+  row.appendChild(name); row.appendChild(actions);
+  return row;
+}
+
+function rowBtn(label, variant, title, onClick) {
+  const b = document.createElement('button');
+  b.className = 'class-action-btn' + (variant ? ' ' + variant : '');
+  b.textContent = label;
+  b.title = title;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+/* ---------- rename / archive / restore / delete ---------- */
+
+/** Swap the name cell for an input, and the row's actions for Save/Cancel. */
+function startRename(c, nameEl, actionsEl) {
+  // No type attribute on purpose: the global `input[type=text]` rule out-specifies
+  // .rename-input and would give this the full-size field styling.
+  const inp = document.createElement('input');
+  inp.className = 'rename-input';
+  inp.value = c.name;
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitRename(c, inp.value);
+    if (e.key === 'Escape') renderClassList();
+  });
+  nameEl.textContent = '';
+  nameEl.appendChild(inp);
+
+  actionsEl.innerHTML = '';
+  actionsEl.appendChild(rowBtn('Save', 'primary', 'Save the new name', () => submitRename(c, inp.value)));
+  actionsEl.appendChild(rowBtn('Cancel', '', 'Cancel', () => renderClassList()));
+  inp.focus(); inp.select();
+}
+
+async function submitRename(c, value) {
+  const name = (value || '').trim();
+  if (!name || name === c.name) { renderClassList(); return; }
+  try {
+    await api('updateClass', { classId: c.id, name });
+    await syncClasses();
+    await refreshManageModal();
+    toast('Renamed ✓');
+  } catch (e) { toast('Rename failed: ' + e.message, true); }
+}
+
+async function archiveClass(c) {
+  try {
+    await api('updateClass', { classId: c.id, archived: true });
+    // syncClasses lists active classes only, so an archived current class drops
+    // out and it falls back to the first remaining one on its own.
+    await syncClasses();
+    await refreshManageModal();
+    toast('Archived “' + c.name + '” ✓');
+  } catch (e) { toast('Archive failed: ' + e.message, true); }
+}
+
+async function restoreClass(c) {
+  try {
+    await api('updateClass', { classId: c.id, archived: false });
+    await syncClasses();
+    await refreshManageModal();
+    toast('Restored “' + c.name + '” ✓');
+  } catch (e) { toast('Restore failed: ' + e.message, true); }
+}
+
+/** Deleting is the one irreversible action here, so it takes two clicks. */
+function confirmDeleteClass(c, row) {
+  const actions = row.querySelector('.class-row-actions');
+  actions.innerHTML = '';
+  const warn = document.createElement('span');
+  warn.className = 'delete-warn';
+  warn.textContent = 'Delete permanently?';
+  actions.appendChild(warn);
+  actions.appendChild(rowBtn('Yes', 'delete', 'Remove this class from Scantron', () => permanentlyDeleteClass(c)));
+  actions.appendChild(rowBtn('Cancel', '', 'Keep this class', () => renderClassList()));
+}
+
+async function permanentlyDeleteClass(c) {
+  try {
+    await api('deleteClass', { classId: c.id });
+    if (store.currentClass === c.id) store.currentClass = '';
+    await syncClasses();
+    await refreshManageModal();
+    toast('Deleted ✓');
+  } catch (e) { toast('Delete failed: ' + e.message, true); }
+}
+
+/* ---------- create a new class (new Sheet, student-info as tab 1) ---------- */
+
+/**
+ * A Google Cloud API key enables the real Drive folder picker. Empty is the
+ * supported state: openFolderPickerForClass() then falls back to a paste-the-ID
+ * row, which needs no key, no external script, and works from a file:// page.
+ * Fill this in to turn the picker on — nothing else has to change.
+ */
+const PICKER_API_KEY = '';
+
+let _newClassFolderId = '';
+let _newClassFolderName = '';
+
+function showCreateForm() {
+  $('addSheetForm').classList.add('hidden');
+  $('createClassForm').classList.remove('hidden');
+  $('ccStatus').textContent = '';
+  clearFolderChoice();
+  $('ccName').value = '';
+  $('ccName').focus();
+}
+
+function hideCreateForm() {
+  $('createClassForm').classList.add('hidden');
+  _newClassFolderId = '';
+  _newClassFolderName = '';
+}
+
+$('btnShowCreateClass').addEventListener('click', showCreateForm);
+$('btnCreateClassCancel').addEventListener('click', hideCreateForm);
+$('ccName').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnCreateClass').click(); });
+
+/** Reset the folder row to its "nothing chosen yet" state. */
+function clearFolderChoice() {
+  _newClassFolderId = '';
+  _newClassFolderName = '';
+  const row = $('ccFolderRow');
+  row.innerHTML = '';
+  const label = document.createElement('span');
+  label.className = 'folder-label';
+  label.textContent = 'Folder:';
+  const btn = document.createElement('button');
+  btn.className = 'class-action-btn';
+  btn.id = 'chooseFolderBtn';
+  btn.textContent = 'Choose Folder';
+  btn.title = 'Choose a Drive folder for this class';
+  btn.addEventListener('click', openFolderPickerForClass);
+  const chosen = document.createElement('span');
+  chosen.className = 'folder-name';
+  chosen.id = 'chosenFolderName';
+  row.appendChild(label); row.appendChild(btn); row.appendChild(chosen);
+}
+
+function openFolderPickerForClass() {
+  if (!PICKER_API_KEY) { _showFolderIdInput(); return; }
+  api('getToken')
+    .then(data => { if (data.token) _openFolderPickerWithToken(data.token); else _showFolderIdInput(); })
+    .catch(() => _showFolderIdInput());
+}
+
+/** Dead until PICKER_API_KEY is set; kept so enabling the picker is a one-liner. */
+function _openFolderPickerWithToken(token) {
+  const load = () => {
+    gapi.load('picker', () => {
+      const picker = new google.picker.PickerBuilder()
+        .setOAuthToken(token)
+        .setDeveloperKey(PICKER_API_KEY)
+        .addView(new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(true))
+        .setTitle('Choose a folder for the new class')
+        .setCallback(result => {
+          if (result[google.picker.Response.ACTION] === google.picker.Action.PICKED) {
+            const doc = result[google.picker.Response.DOCUMENTS][0];
+            _newClassFolderId = doc[google.picker.Document.ID];
+            _newClassFolderName = doc[google.picker.Document.NAME];
+            _updateFolderDisplay();
+          }
+        })
+        .build();
+      picker.setVisible(true);
+    });
+  };
+  if (typeof gapi !== 'undefined') { load(); return; }
+  const script = document.createElement('script');
+  script.src = 'https://apis.google.com/js/api.js';
+  script.onload = load;
+  document.head.appendChild(script);
+}
+
+/** Picker-less fallback: paste a folder link or ID. */
+function _showFolderIdInput() {
+  const row = $('ccFolderRow');
+  row.innerHTML = '';
+  const label = document.createElement('span');
+  label.className = 'folder-label';
+  label.textContent = 'Folder ID:';
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.id = 'folderIdInput';
+  inp.placeholder = 'Paste folder link or ID…';
+  inp.addEventListener('input', () => setFolderFromInput(inp.value));
+  const clear = document.createElement('button');
+  clear.className = 'class-action-btn';
+  clear.textContent = 'Clear';
+  clear.title = 'Use My Drive instead';
+  clear.addEventListener('click', clearFolderChoice);
+  row.appendChild(label); row.appendChild(inp); row.appendChild(clear);
+  inp.focus();
+}
+
+function setFolderFromInput(val) {
+  _newClassFolderId = extractFolderId(val);   // handles both a folder URL and a bare ID
+  _newClassFolderName = '';
+}
+
+function _updateFolderDisplay() {
+  const nameEl = $('chosenFolderName');
+  const btn = $('chooseFolderBtn');
+  if (nameEl) nameEl.textContent = _newClassFolderName || _newClassFolderId;
+  if (btn) btn.textContent = 'Change Folder';
+}
+
+$('btnCreateClass').addEventListener('click', async () => {
+  const st = $('ccStatus');
+  const name = $('ccName').value.trim();
+  if (!name) { st.textContent = '✕ Give the class a name.'; $('ccName').focus(); return; }
+  if (!store.bridgeUrl) { st.textContent = '✕ Connect your bridge in ⚙ Settings first.'; return; }
+  const btn = $('btnCreateClass');
+  btn.disabled = true;
+  $('ccName').disabled = true;
+  btn.textContent = 'Creating…';
+  st.textContent = '⏳ Creating the Google Sheet…';
+  try {
+    const data = await api('createClass', { name, folderId: _newClassFolderId });
+    setConn(true);
+    $('ccName').value = ''; st.textContent = '';
+    hideCreateForm();
+    store.currentClass = data.classId;   // land on the class we just made
+    await syncClasses();
+    closeManageModal();
+    toast('Created "' + name + '" ✓');
+    if (data.folder && data.folder.url &&
+        confirm('"' + name + '" was created in the Drive folder "' + data.folder.name + '".\n\nOpen that folder now?')) {
+      window.open(data.folder.url, '_blank', 'noopener');
+    }
+  } catch (e) {
+    st.textContent = '✕ ' + e.message;
+  } finally {
+    btn.disabled = false;
+    $('ccName').disabled = false;
+    btn.textContent = 'Create';
+  }
+});
+
+/** Accepts a Drive folder URL or a bare folder ID; '' means "My Drive root". */
+function extractFolderId(val) {
+  const s = (val || '').trim();
+  if (!s) return '';
+  const m = s.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : s;
+}
+
+/* ---------- link an existing Sheet as a class ---------- */
+$('btnShowAddSheet').addEventListener('click', () => {
+  hideCreateForm();
+  $('addSheetForm').classList.remove('hidden');
+  $('esStatus').textContent = '';
+  $('esName').focus();
+});
+$('btnAddSheetCancel').addEventListener('click', () => $('addSheetForm').classList.add('hidden'));
+
+$('btnAddSheet').addEventListener('click', async () => {
+  const st = $('esStatus');
+  const name = $('esName').value.trim();
+  const ref  = $('esSheet').value.trim();
+  if (!name) { st.textContent = '✕ Give the class a name.'; $('esName').focus(); return; }
+  if (!ref)  { st.textContent = '✕ Paste the Sheet link or ID.'; $('esSheet').focus(); return; }
+  const btn = $('btnAddSheet');
+  btn.disabled = true;
+  st.textContent = '⏳ Checking the Sheet…';
+  try {
+    const info = await api('inspectSheet', { sheetId: ref });
+    const note = info.hasRoster
+      ? 'Found "' + info.name + '" (' + info.quizzes + ' quiz tab' + (info.quizzes === 1 ? '' : 's') + ').'
+      : 'Found "' + info.name + '" — it has no student-info tab yet, so one will be added.';
+    if (!confirm(note + '\n\nAdd it as "' + name + '"?')) { st.textContent = ''; return; }
+    const data = await api('registerClass', { name, sheetId: ref });
+    setConn(true);
+    $('esName').value = ''; $('esSheet').value = ''; st.textContent = '';
+    $('addSheetForm').classList.add('hidden');
+    store.currentClass = data.classId;
+    await syncClasses();
+    closeManageModal();
+    toast('Added "' + name + '" ✓');
+  } catch (e) {
+    st.textContent = '✕ ' + e.message;
+  } finally { btn.disabled = false; }
+});
+
+/* ============================ students / roster import ============================ */
+/**
+ * The roster lives in tab 1 of the class Sheet ("student-info"): column A is the
+ * student ID, B is "Last, First", and C/D split out last/first via formulas —
+ * so an import only ever writes A and B.
+ */
+$('hdrStudents').addEventListener('click', openStudentsModal);
+$('btnStudentsClose').addEventListener('click', closeStudentsModal);
+$('studentsModal').addEventListener('click', e => { if (e.target === $('studentsModal')) closeStudentsModal(); });
+
+function openStudentsModal() {
+  const cls = currentCls();
+  $('stClassName').textContent = cls ? cls.name : 'no class selected';
+  $('addStudentPanel').classList.add('hidden');
+  $('impReviewView').classList.add('hidden');
+  $('studentsModal').classList.remove('hidden');
+  refreshRoster();
+}
+function closeStudentsModal() { $('studentsModal').classList.add('hidden'); }
+
+/* The fetched roster is held so search and sort can re-render without going
+   back to the Sheet for every keystroke. */
+let _roster = null;
+let _rosterSort = 'last';
+let _rosterSearch = '';
+let _rosterErr = '';
+
+async function refreshRoster() {
+  if (!store.currentClass) { _roster = null; _rosterErr = ''; renderRoster(); return; }
+  $('rosterList').innerHTML = '<div class="class-empty">⏳ Loading roster…</div>';
+  try {
+    const data = await api('getRoster');
+    setConn(true);
+    _roster = data.students;
+    _rosterErr = '';
+  } catch (e) {
+    setConn(false);
+    _roster = null;
+    _rosterErr = e.message;
+  }
+  renderRoster();
+}
+
+function renderRoster() {
+  const list = $('rosterList');
+  list.innerHTML = '';
+  if (!store.currentClass) {
+    list.innerHTML = '<div class="class-empty">No class selected — create one with <b>+</b> in the class bar.</div>';
+    return;
+  }
+  if (_rosterErr) { list.innerHTML = '<div class="class-empty">✕ ' + esc(_rosterErr) + '</div>'; return; }
+  if (!_roster) { list.innerHTML = '<div class="class-empty">⏳ Loading roster…</div>'; return; }
+  if (!_roster.length) {
+    list.innerHTML = '<div class="class-empty">No students yet — add one or import your roster below.</div>';
+    return;
+  }
+
+  const q = _rosterSearch.trim().toLowerCase();
+  const shown = _roster
+    .filter(s => !q || ((s.last || '') + ' ' + (s.first || '') + ' ' + (s.name || '') + ' ' + (s.id || '')).toLowerCase().includes(q))
+    .sort(_rosterSort === 'first'
+      ? (a, b) => (a.first || '').localeCompare(b.first || '') || (a.last || '').localeCompare(b.last || '')
+      : (a, b) => (a.last || '').localeCompare(b.last || '') || (a.first || '').localeCompare(b.first || ''));
+
+  if (!shown.length) {
+    list.innerHTML = '<div class="class-empty">No students match “' + esc(_rosterSearch) + '”.</div>';
+    return;
+  }
+  shown.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'class-row';
+    const name = document.createElement('span');
+    name.className = 'class-row-name';
+    name.textContent = s.first ? s.last + ', ' + s.first : (s.last || s.name);
+    // The detail modal reads the gradebook, so it can only open once scores are loaded.
+    if (_gb && _gb.students.some(x => String(x.id) === String(s.id))) {
+      name.title = 'See this student’s scores';
+      name.addEventListener('click', () => { closeStudentsModal(); openStudentModal(s.id); });
+    } else {
+      name.style.cursor = 'default';
+    }
+    const id = document.createElement('span');
+    id.style.cssText = 'font-size:11px;color:#8a9bb0;font-weight:700;font-variant-numeric:tabular-nums';
+    id.textContent = s.id || '—';
+    row.appendChild(name); row.appendChild(id);
+    list.appendChild(row);
+  });
+  const count = document.createElement('div');
+  count.className = 'hint';
+  count.textContent = shown.length === _roster.length
+    ? _roster.length + ' student' + (_roster.length === 1 ? '' : 's') + ' on the roster.'
+    : shown.length + ' of ' + _roster.length + ' students shown.';
+  list.appendChild(count);
+}
+
+$('btnRefreshRoster').addEventListener('click', refreshRoster);
+$('rosterSearch').addEventListener('input', e => {
+  _rosterSearch = e.target.value;
+  $('rosterSearchClear').classList.toggle('hidden', !_rosterSearch);
+  renderRoster();
+});
+$('rosterSearchClear').addEventListener('click', () => {
+  _rosterSearch = ''; $('rosterSearch').value = '';
+  $('rosterSearchClear').classList.add('hidden');
+  renderRoster();
+});
+[['rosterSortLast', 'last'], ['rosterSortFirst', 'first']].forEach(([id, key]) => {
+  $(id).addEventListener('click', () => {
+    _rosterSort = key;
+    ['rosterSortLast', 'rosterSortFirst'].forEach(o => $(o).classList.toggle('active', o === id));
+    renderRoster();
+  });
+});
+
+/* ---------- add one student (the Single tab) ---------- */
+function setAddMode(mode) {
+  const single = mode === 'single';
+  $('asModeSingle').classList.toggle('active', single);
+  $('asModeBatch').classList.toggle('active', !single);
+  $('asSinglePane').classList.toggle('hidden', !single);
+  $('asBatchPane').classList.toggle('hidden', single);
+  if (single) $('asId').focus(); else $('impText').focus();
+}
+$('asModeSingle').addEventListener('click', () => setAddMode('single'));
+$('asModeBatch').addEventListener('click', () => setAddMode('batch'));
+$('btnAddOneCancel').addEventListener('click', () => $('addStudentPanel').classList.add('hidden'));
+['asId', 'asLast', 'asFirst'].forEach(id => {
+  $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('btnAddOne').click(); });
+});
+
+$('btnAddOne').addEventListener('click', async () => {
+  const err = $('asError');
+  const id = $('asId').value.trim();
+  const last = $('asLast').value.trim();
+  const first = $('asFirst').value.trim();
+  const fail = msg => { err.textContent = msg; err.style.display = 'block'; };
+  err.style.display = 'none';
+  if (!last && !first) return fail('Give the student a name.');
+  if (!id) return fail('Give the student an ID — it is what matches their scanned sheet to this row.');
+  if (_roster && _roster.some(s => String(s.id) === id)) {
+    return fail('ID ' + id + ' is already on the roster (' + _roster.find(s => String(s.id) === id).name + ').');
+  }
+  const btn = $('btnAddOne');
+  btn.disabled = true;
+  showSaveState('saving');
+  try {
+    // One student is just a one-row batch — the bridge needs no separate action.
+    await api('addStudents', { students: [{ id, last, first }] });
+    setConn(true);
+    showSaveState('saved');
+    $('asId').value = ''; $('asLast').value = ''; $('asFirst').value = '';
+    await refreshRoster();
+    _gb = null;   // the new student belongs in the grid
+    toast('Added ' + (last ? last + ', ' + first : first) + ' ✓');
+    $('asId').focus();
+  } catch (e) {
+    setConn(false);
+    showSaveState('error');
+    fail(e.message);
+    toast('Could not add student: ' + e.message, true);
+  } finally { btn.disabled = false; }
+});
+
+$('btnShowImport').addEventListener('click', () => {
+  if (!store.currentClass) return toast('Create or select a class first.', true);
+  $('impReviewView').classList.add('hidden');
+  $('impEditView').classList.remove('hidden');
+  $('impError').style.display = 'none';
+  $('asError').style.display = 'none';
+  $('addStudentPanel').classList.remove('hidden');
+  setAddMode('single');
+});
+$('btnImpCancel').addEventListener('click', () => $('addStudentPanel').classList.add('hidden'));
+
+$('impFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => { $('impText').value = ev.target.result; };
+  reader.readAsText(file);
+  e.target.value = ''; // let the same file be picked again after an edit
+});
+
+/**
+ * Parses one import line into { id, last, first, warning, isHeader }. `warning`
+ * is a short string when something looks off, surfaced in the review step so a
+ * mis-pasted CSV (a header row, or a sheet export with extra columns) gets
+ * caught before anything reaches the Sheet.
+ */
+function parseImportLine(line) {
+  const f = line.split(',').map(s => s.trim());
+  const low = f.map(s => s.toLowerCase());
+  const isHeader = low[0] === 'id' || low[0] === 'student id' ||
+                   low.some(s => s === 'last name' || s === 'first name' || s === 'lastname' || s === 'firstname');
+  if (isHeader) {
+    return { id: f[0] || '', last: f[1] || '', first: f[2] || '', warning: 'Header row — excluded', isHeader: true };
+  }
+  if (f.length >= 3) {
+    const extra = f.length - 3;
+    return {
+      id: f[0], last: f[1], first: f[2],
+      warning: extra > 0 ? extra + ' extra column' + (extra === 1 ? '' : 's') + ' ignored' : null,
+    };
+  }
+  if (f.length === 2) return { id: '', last: f[0], first: f[1], warning: 'No ID — expected "ID, Last, First"' };
+  return { id: '', last: f[0], first: '', warning: 'No commas found — expected "ID, Last, First"' };
+}
+
+let _impReview = []; // [{ id, last, first, warning, include }] — current preview
+
+$('btnImpReview').addEventListener('click', () => {
+  const lines = $('impText').value.split('\n').map(l => l.trim()).filter(Boolean);
+  const err = $('impError');
+  err.style.display = 'none';
+  if (!lines.length) {
+    err.textContent = 'Enter at least one student.';
+    err.style.display = 'block';
+    return;
+  }
+  _impReview = lines.map(l => {
+    const p = parseImportLine(l);
+    return { id: p.id, last: p.last, first: p.first, warning: p.warning, include: !p.isHeader };
+  });
+  renderImpReview();
+  $('impEditView').classList.add('hidden');
+  $('impReviewView').classList.remove('hidden');
+});
+
+function renderImpReview() {
+  const list = $('impReviewList');
+  list.innerHTML = '';
+  _impReview.forEach((e, i) => {
+    const row = document.createElement('label');
+    row.className = 'imp-review-row' + (e.warning ? ' warn' : '');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = e.include;
+    cb.addEventListener('change', () => { _impReview[i].include = cb.checked; updateImpCount(); });
+    const id = document.createElement('span');
+    id.className = 'imp-review-id';
+    id.textContent = e.id || '—';
+    const name = document.createElement('span');
+    name.className = 'imp-review-name';
+    name.textContent = (e.last || '—') + ', ' + (e.first || '—');
+    row.appendChild(cb); row.appendChild(id); row.appendChild(name);
+    if (e.warning) {
+      const w = document.createElement('span');
+      w.className = 'imp-review-warn';
+      w.textContent = '⚠ ' + e.warning;
+      row.appendChild(w);
+    }
+    list.appendChild(row);
+  });
+  updateImpCount();
+}
+function updateImpCount() {
+  const n = _impReview.filter(e => e.include).length;
+  $('impReviewCount').textContent = n + ' of ' + _impReview.length + ' will be imported';
+  $('btnImpConfirm').disabled = n === 0;
+}
+
+$('btnImpBack').addEventListener('click', () => {
+  $('impReviewView').classList.add('hidden');
+  $('impEditView').classList.remove('hidden');
+});
+
+$('btnImpConfirm').addEventListener('click', async () => {
+  const students = _impReview.filter(e => e.include)
+    .map(e => ({ id: e.id, last: e.last, first: e.first }));
+  if (!students.length) return;
+  const btn = $('btnImpConfirm');
+  btn.disabled = true;
+  showSaveState('saving');
+  try {
+    const data = await api('addStudents', { students });
+    setConn(true);
+    showSaveState('saved');
+    $('addStudentPanel').classList.add('hidden');
+    $('impReviewView').classList.add('hidden');
+    $('impEditView').classList.remove('hidden');
+    $('impText').value = '';
+    _impReview = [];
+    await refreshRoster();
+    _gb = null;   // the imported students belong in the grid
+    toast('Imported ' + data.added + ' student' + (data.added === 1 ? '' : 's') + ' ✓');
+  } catch (e) {
+    setConn(false);
+    showSaveState('error');
+    const err = $('impError');
+    err.textContent = e.message;
+    err.style.display = 'block';
+    $('impReviewView').classList.add('hidden');
+    $('impEditView').classList.remove('hidden');
+    toast('Import failed: ' + e.message, true);
+  } finally { btn.disabled = false; }
+});
+
+/* ---------- print sheets modal ---------- */
+$('hdrPrint').addEventListener('click', () => {
+  renderSheetPreview();
+  $('printModal').classList.remove('hidden');
+});
+$('btnPrintClose').addEventListener('click', () => $('printModal').classList.add('hidden'));
+$('printModal').addEventListener('click', e => { if (e.target === $('printModal')) $('printModal').classList.add('hidden'); });
+
+/* ============================ bubble grid widget ============================ */
+/** Builds a bubble grid; answers is an array mutated in place. */
+function buildGrid(container, numQ, numChoices, answers, onChange) {
+  container.innerHTML = '';
+  for (let q = 0; q < numQ; q++) {
+    const row = document.createElement('div');
+    row.className = 'qrow';
+    const label = document.createElement('span');
+    label.className = 'qn';
+    label.textContent = (q + 1) + '.';
+    row.appendChild(label);
+    for (let c = 0; c < numChoices; c++) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'bub';
+      btn.textContent = LETTERS[c];
+      btn.dataset.q = q; btn.dataset.c = LETTERS[c];
+      btn.addEventListener('click', () => {
+        answers[q] = answers[q] === LETTERS[c] ? '' : LETTERS[c];
+        paintGrid(container, answers);
+        if (onChange) onChange();
+      });
+      row.appendChild(btn);
+    }
+    container.appendChild(row);
+  }
+  paintGrid(container, answers);
+}
+function paintGrid(container, answers) {
+  // `includes` so scanned multi-marks (e.g. "AB") light up both bubbles
+  container.querySelectorAll('.bub').forEach(b => {
+    b.classList.toggle('sel', (answers[+b.dataset.q] || '').includes(b.dataset.c));
+  });
+}
+
+/* ============================ new quiz ============================ */
+let nqKey = [];
+function rebuildNewQuizGrid() {
+  const n = +$('nqCount').value, c = +$('nqChoices').value;
+  nqKey = Array.from({ length: n }, (_, i) => nqKey[i] || '');
+  nqKey.length = n;
+  buildGrid($('nqKeyGrid'), n, c, nqKey, updateKeyCount);
+  updateKeyCount();
+}
+function updateKeyCount() {
+  const set = nqKey.filter(Boolean).length;
+  $('nqKeyCount').textContent = set + ' / ' + nqKey.length + ' answers set';
+}
+$('nqCount').addEventListener('change', rebuildNewQuizGrid);
+$('nqChoices').addEventListener('change', rebuildNewQuizGrid);
+$('btnClearKey').addEventListener('click', () => { nqKey = nqKey.map(() => ''); paintGrid($('nqKeyGrid'), nqKey); updateKeyCount(); });
+
+$('btnCreateQuiz').addEventListener('click', async () => {
+  const name = $('nqName').value.trim();
+  if (!name) return toast('Give the quiz a name first.', true);
+  if (!nqKey.some(Boolean) && !confirm('No answer key set — create anyway? (You can update the key later.)')) return;
+  const btn = $('btnCreateQuiz');
+  btn.disabled = true;
+  showSaveState('saving');
+  try {
+    const data = await api('createQuiz', {
+      name, numQuestions: nqKey.length, choicesPerQ: +$('nqChoices').value, key: nqKey,
+    });
+    setConn(true);
+    showSaveState('saved');
+    toast('Created tab "' + data.quiz.name + '" in your Google Sheet ✓');
+    $('nqName').value = '';
+    nqKey = nqKey.map(() => '');
+    paintGrid($('nqKeyGrid'), nqKey); updateKeyCount();
+    await refreshQuizzes();
+    showView('quizzes');
+  } catch (e) {
+    setConn(false);
+    showSaveState('error');
+    toast('Create failed: ' + e.message, true);
+  } finally { btn.disabled = false; }
+});
+
+/* ============================ quiz list & results ============================ */
+async function refreshQuizzes() {
+  try {
+    const data = await api('listQuizzes');
+    setConn(true);
+    store.quizzes = data.quizzes;
+    renderQuizList();
+  } catch (e) {
+    setConn(false);
+    renderQuizList();
+    toast('Could not reach sheet: ' + e.message, true);
+  }
+}
+function renderQuizList() {
+  const list = $('quizList');
+  if (!currentCls()) {
+    list.innerHTML = '<div class="empty-state">No class yet — click <b>+</b> in the class bar to create one. Scantron makes the Google Sheet for you.</div>';
+    return;
+  }
+  const quizzes = store.quizzes;
+  if (!quizzes.length) {
+    list.innerHTML = '<div class="empty-state">No quizzes yet — create one in the New Quiz tab.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  quizzes.forEach(q => {
+    const el = document.createElement('div');
+    el.className = 'quiz-item';
+    el.innerHTML = '<div class="grow"><div class="name"></div><div class="meta"></div></div>' +
+      '<span class="pill">' + q.numQuestions + ' Q</span><span class="pill">' + q.responses + ' scans</span>';
+    el.querySelector('.name').textContent = q.name;
+    el.querySelector('.meta').textContent = q.created ? new Date(q.created).toLocaleDateString() : '';
+    el.addEventListener('click', () => openResults(q.name));
+    list.appendChild(el);
+  });
+}
+$('btnRefreshQuizzes').addEventListener('click', refreshQuizzes);
+
+async function openResults(quizName) {
+  const card = $('resultsCard');
+  card.style.display = '';
+  $('resultsTitle').textContent = quizName;
+  $('resultsBody').innerHTML = '<div class="empty-state">⏳ Loading…</div>';
+  card.scrollIntoView({ behavior: 'smooth' });
+  try {
+    const data = await api('getResults', { quiz: quizName });
+    setConn(true);
+    renderResults(data, quizName);
+  } catch (e) {
+    $('resultsBody').innerHTML = '<div class="empty-state">✕ Failed: ' + esc(e.message) + '</div>';
+  }
+}
+function renderResults(data, quizName) {
+  const { quiz, rows } = data;
+  const sheetLink = store.sheetUrl && quiz.gid != null
+    ? ' · <a href="' + esc(store.sheetUrl) + '#gid=' + quiz.gid + '" target="_blank" rel="noopener" style="color:#5b6fcc">open tab in Google Sheets ↗</a>' : '';
+  if (!rows.length) {
+    $('resultsBody').innerHTML = '<div class="empty-state">No responses yet. Grade some papers!' + sheetLink + '</div>';
+    return;
+  }
+  const pcts = rows.map(r => r.percent).sort((a, b) => a - b);
+  const avg = pcts.reduce((s, p) => s + p, 0) / pcts.length;
+  const median = pcts.length % 2 ? pcts[(pcts.length - 1) / 2] : (pcts[pcts.length / 2 - 1] + pcts[pcts.length / 2]) / 2;
+
+  let html = '<div class="hint" style="margin:0 0 10px">' + rows.length + ' responses · avg <b>' + avg.toFixed(1) + '%</b> · median <b>' +
+    median.toFixed(1) + '%</b> · range ' + pcts[0].toFixed(0) + '–' + pcts[pcts.length - 1].toFixed(0) + '%' + sheetLink + '</div>';
+
+  // student table (click a row for per-question detail)
+  html += '<div style="overflow-x:auto"><table class="results" id="resTable"><tr><th>Student</th><th>ID</th><th>Score</th><th>%</th><th>When</th><th></th></tr>';
+  const rev = rows.slice().reverse();
+  rev.forEach((r, i) => {
+    const reviewBtn = r.imageId
+      ? '<button class="btn secondary rev-btn" data-i="' + i + '" style="padding:3px 9px;font-size:11px">📷 Review</button>' : '';
+    html += '<tr class="res-row" data-i="' + i + '" style="cursor:pointer"><td>' + esc(r.student || '—') + '</td><td>' + esc(r.studentId) + '</td><td>' +
+      r.score + '</td><td>' + r.percent.toFixed(1) + '%</td><td>' +
+      new Date(r.timestamp).toLocaleString() + '</td><td>' + reviewBtn + '</td></tr>';
+  });
+  html += '</table></div>';
+
+  // item analysis
+  const key = quiz.key || [];
+  if (key.some(Boolean)) {
+    html += '<h3 style="margin:18px 0 6px;font-size:13px;font-weight:700">Item analysis</h3>';
+    html += '<div style="overflow-x:auto"><table class="results"><tr><th>Q</th><th>Key</th><th>% correct</th><th></th><th>Top wrong pick</th></tr>';
+    for (let q = 0; q < key.length; q++) {
+      if (!key[q]) continue;
+      let correct = 0; const wrong = {};
+      rows.forEach(r => {
+        const a = (r.answers[q] || '').toUpperCase();
+        if (a === key[q].toUpperCase()) correct++;
+        else if (a) wrong[a] = (wrong[a] || 0) + 1;
+      });
+      const pct = 100 * correct / rows.length;
+      const topWrong = Object.entries(wrong).sort((a, b) => b[1] - a[1])[0];
+      const barColor = pct >= 70 ? '#27ae60' : pct >= 40 ? '#e67e22' : '#e74c3c';
+      html += '<tr><td>' + (q + 1) + '</td><td><b>' + esc(key[q]) + '</b></td><td>' + pct.toFixed(0) + '%</td>' +
+        '<td style="min-width:110px"><div style="background:#f0f2f5;border-radius:4px;height:10px"><div style="width:' +
+        pct.toFixed(0) + '%;background:' + barColor + ';height:10px;border-radius:4px"></div></div></td>' +
+        '<td>' + (topWrong ? esc(topWrong[0]) + ' (' + topWrong[1] + ')' : '—') + '</td></tr>';
+    }
+    html += '</table></div>';
+  }
+  $('resultsBody').innerHTML = html;
+
+  // expandable per-student answer detail
+  document.querySelectorAll('#resTable .res-row').forEach(tr => tr.addEventListener('click', () => {
+    const existing = tr.nextElementSibling;
+    if (existing && existing.classList.contains('res-detail')) { existing.remove(); return; }
+    document.querySelectorAll('#resTable .res-detail').forEach(d => d.remove());
+    const r = rev[+tr.dataset.i];
+    const chips = r.answers.map((a, q) => {
+      const k = (key[q] || '').toUpperCase();
+      const ok = k && a.toUpperCase() === k;
+      const color = !k ? '#f0f2f5;color:#8a9bb0' : ok ? '#eafaf1;color:#1a6b3a' : '#fdeaea;color:#c0392b';
+      const label = a || '·';
+      const title = k ? 'Q' + (q + 1) + ' — key: ' + k : 'Q' + (q + 1) + ' — unscored';
+      return '<span title="' + esc(title) + '" style="display:inline-block;margin:2px;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:600;background:' +
+        color + '">' + (q + 1) + ':' + esc(label) + '</span>';
+    }).join('');
+    const detail = document.createElement('tr');
+    detail.className = 'res-detail';
+    detail.innerHTML = '<td colspan="6">' + chips + '</td>';
+    tr.after(detail);
+  }));
+
+  // Review/override: pull the sheet's saved photo and load its response into the
+  // grade editor so an ambiguous read can be corrected and re-saved (a rescan
+  // appends; the newest timestamp wins per student, exactly as a fresh scan does).
+  document.querySelectorAll('#resTable .rev-btn').forEach(btn => btn.addEventListener('click', e => {
+    e.stopPropagation(); // don't also toggle the row's answer detail
+    openReview(quizName, rev[+btn.dataset.i]);
+  }));
+}
+function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+async function openReview(quizName, r) {
+  showView('grade');
+  const sel = $('grQuiz');
+  if ([...sel.options].some(o => o.value === quizName)) { sel.value = quizName; rebuildGradeGrid(); }
+  // Load the recorded response into the editable grid for override.
+  $('grStudent').value = r.student || '';
+  $('grStudentId').value = r.studentId || '';
+  for (let i = 0; i < grAnswers.length; i++) grAnswers[i] = r.answers[i] || '';
+  paintGrid($('grGrid'), grAnswers);
+  syncFastFromGrid();
+  // Manual mode: nothing should re-capture over the override, and there's no new
+  // image to attach (leave pendingImage null so the re-save keeps the same photo
+  // reference isn't overwritten — a corrected row simply carries no new upload).
+  const manualBtn = document.querySelector('.mode-btn[data-mode="manual"]');
+  if (manualBtn) manualBtn.click();
+  pendingImage = null;
+  reviewImageId = r.imageId; // keep the photo link on the corrected re-save
+  const panel = $('reviewPanel'), img = $('reviewImg');
+  panel.style.display = '';
+  img.removeAttribute('src');
+  $('reviewStatus').textContent = '⏳ Loading the scanned sheet…';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  try {
+    img.src = await driveFetchImageUrl(r.imageId);
+    $('reviewStatus').textContent = 'Compare against the photo, fix any bubbles above, then “Score & save” to override.';
+  } catch (err) {
+    $('reviewStatus').textContent = '✕ Could not load the image (' + err.message + ').';
+  }
+}
+function closeReview() {
+  const img = $('reviewImg');
+  if (img.src && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+  img.removeAttribute('src');
+  $('reviewPanel').style.display = 'none';
+}
+$('btnReviewClose').addEventListener('click', closeReview);
+
+/* ============================ grading ============================ */
+let grAnswers = [];
+let grQuizMeta = null;
+
+function refreshGradeQuizPicker() {
+  const sel = $('grQuiz');
+  const current = sel.value;
+  sel.innerHTML = '';
+  store.quizzes.forEach(q => {
+    const o = document.createElement('option');
+    o.value = q.name; o.textContent = q.name + ' (' + q.numQuestions + ' Q)';
+    sel.appendChild(o);
+  });
+  if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
+  rebuildGradeGrid();
+}
+function rebuildGradeGrid() {
+  grQuizMeta = store.quizzes.find(q => q.name === $('grQuiz').value) || null;
+  const n = grQuizMeta ? grQuizMeta.numQuestions : 0;
+  const c = grQuizMeta ? grQuizMeta.choicesPerQ : 5;
+  grAnswers = Array.from({ length: n }, () => '');
+  $('grFast').value = '';
+  $('grResult').innerHTML = '';
+  // Starting a fresh grade abandons any in-progress override/review.
+  reviewImageId = null; pendingImage = null;
+  $('reviewPanel').style.display = 'none';
+  buildGrid($('grGrid'), n, c, grAnswers, syncFastFromGrid);
+}
+$('grQuiz').addEventListener('change', rebuildGradeGrid);
+
+$('grFast').addEventListener('input', () => {
+  const raw = $('grFast').value.toUpperCase().replace(/[^A-J \-]/g, '');
+  $('grFast').value = raw;
+  for (let i = 0; i < grAnswers.length; i++) {
+    const ch = raw[i] || '';
+    grAnswers[i] = (ch === ' ' || ch === '-') ? '' : ch;
+  }
+  paintGrid($('grGrid'), grAnswers);
+});
+function syncFastFromGrid() {
+  // multi-marks can't be expressed in the one-letter-per-question fast field
+  $('grFast').value = grAnswers.map(a => a.length === 1 ? a : a ? '*' : '-').join('').replace(/-+$/, '');
+}
+
+$('btnGradeClear').addEventListener('click', () => {
+  $('grStudent').value = ''; $('grStudentId').value = '';
+  rebuildGradeGrid();
+});
+
+$('btnScore').addEventListener('click', () => scoreAndSave());
+async function scoreAndSave() {
+  if (!grQuizMeta) return toast('Pick a quiz first (refresh the quiz list if empty).', true);
+  const payload = {
+    quiz: grQuizMeta.name,
+    student: $('grStudent').value.trim(),
+    studentId: $('grStudentId').value.trim(),
+    answers: grAnswers.slice(),
+    timestamp: new Date().toISOString(),
+    // Minted here, not at send time: if this scan ends up queued offline, every
+    // later retry must reuse this id or a write that landed with a lost response
+    // would score the same paper twice.
+    writeId: newWriteId(),
+  };
+  // local score preview against cached key
+  const local = localScore(grAnswers, grQuizMeta.key || []);
+  showScore(local, payload.student);
+  // Cache + upload the scanned sheet image and stamp its Drive id onto the
+  // payload, so the row carries the image in the same write. No-op for manual
+  // entries and when Drive is off; never throws.
+  await attachScanImage(payload);
+  $('grStatus').textContent = 'Saving…';
+  showSaveState('saving');
+  try {
+    const data = await api('submit', payload);
+    setConn(true);
+    showSaveState('saved');
+    $('grStatus').textContent = 'Saved to tab "' + grQuizMeta.name + '" ✓';
+    showScore({ earned: data.score, possible: data.possible, percent: data.percent }, payload.student);
+    grQuizMeta.responses = (grQuizMeta.responses || 0) + 1;
+    store.quizzes = store.quizzes;
+    // This scan just changed the grid. Don't fetch now — the teacher is still
+    // scanning; drop it so the Scores tab reloads when they next look at it.
+    _gb = null;
+    // ready for next student
+    $('grStudent').value = ''; $('grStudentId').value = '';
+    grAnswers = grAnswers.map(() => '');
+    paintGrid($('grGrid'), grAnswers); $('grFast').value = '';
+    $('grStudent').focus();
+  } catch (e) {
+    setConn(false);
+    store.queue = [...store.queue, { classId: store.currentClass, payload }];
+    showSaveState('queued', store.queue.length);
+    $('grStatus').textContent = 'Offline — queued (' + store.queue.length + ' pending). Will retry from Settings.';
+    toast('Could not reach sheet — response queued locally.', true);
+  }
+}
+
+function localScore(answers, key) {
+  let earned = 0, possible = 0;
+  key.forEach((k, i) => {
+    if (!k) return;
+    possible++;
+    if ((answers[i] || '').toUpperCase() === k.toUpperCase()) earned++;
+  });
+  return { earned, possible, percent: possible ? Math.round(1000 * earned / possible) / 10 : 0 };
+}
+function showScore(s, student) {
+  const color = s.percent >= 70 ? '#27ae60' : s.percent >= 50 ? '#e67e22' : '#e74c3c';
+  $('grResult').innerHTML =
+    '<div class="score-big" style="color:' + color + '">' + s.earned + ' / ' + s.possible + '</div>' +
+    '<div class="score-sub">' + (student ? esc(student) + ' — ' : '') + s.percent.toFixed(1) + '%</div>';
+}
+
+/* ============================ offline queue ============================ */
+function renderQueueInfo() {
+  const q = store.queue;
+  $('queueInfo').textContent = q.length ? '⏸ ' + q.length + ' queued submission(s) waiting to upload.' : 'No queued submissions.';
+}
+$('btnFlushQueue').addEventListener('click', flushQueue);
+async function flushQueue() {
+  let q = store.queue;
+  if (!q.length) return toast('Queue is empty.');
+  showSaveState('syncing');
+  let sent = 0;
+  while (q.length) {
+    const item = q[0];
+    // Each queued scan remembers the class it was graded for, so a flush that
+    // happens after the teacher has switched classes still lands in the right Sheet.
+    const classId = item.classId || store.currentClass;
+    const payload = item.payload || item;
+    // A scan that was queued offline kept its image in IndexedDB by writeId.
+    // Now that we're reaching the network, upload it and stamp the fileId before
+    // the retry — best-effort, so a still-off Drive doesn't block the score.
+    if (payload.writeId && !payload.imageId) {
+      try {
+        const blob = await idbGet(payload.writeId);
+        if (blob) {
+          const cls = store.classes.find(c => c.id === classId);
+          payload.imageId = await driveUploadImage(blob, cls && cls.name, payload.quiz, payload.studentId || payload.student || payload.writeId);
+        }
+      } catch (e) { /* Drive off / still offline — submit without the image */ }
+    }
+    try {
+      await apiTo(store.bridgeUrl, 'submit', { ...payload, classId });
+      q = q.slice(1); store.queue = q; sent++;
+    } catch (e) { break; }
+  }
+  renderQueueInfo();
+  if (store.queue.length) showSaveState('queued', store.queue.length);
+  else showSaveState(sent ? 'saved' : '');
+  toast(sent ? 'Uploaded ' + sent + ' queued response(s) ✓' : 'Still offline — will keep them queued.', !sent);
+}
+// Auto-drain the queue when connectivity returns (guarded: not present in the test sandbox)
+if (typeof window.addEventListener === 'function') {
+  window.addEventListener('online', () => { if (store.queue.length) flushQueue(); });
+}
+
+/* ============================ answer sheet layouts ============================ */
+/**
+ * All geometry is in INCHES on a US-letter page (8.5 × 11).
+ * The same layout drives BOTH the printed SVG sheet and the camera scanner:
+ * the scanner detects the four corner fiducial squares and maps normalized
+ * fiducial-rect coordinates (u,v) back to image pixels, so any bubble defined
+ * here is automatically findable in a photo.
+ */
+const PAGE_W = 8.5, PAGE_H = 11;
+const FORMS = {
+  '20':  { questions: 20,  choices: 5, qCols: 1 },
+  '50':  { questions: 50,  choices: 5, qCols: 2 },
+  '100': { questions: 100, choices: 5, qCols: 4 },
+};
+function formForQuestions(n) { return n <= 20 ? '20' : n <= 50 ? '50' : '100'; }
+
+function buildLayout(formKey) {
+  const f = FORMS[formKey];
+  const fidSize = 0.30, fidMargin = 0.40;
+  const c1 = fidMargin + fidSize / 2;                       // 0.55
+  const cx2 = PAGE_W - c1, cy2 = PAGE_H - c1;
+  const L = {
+    formKey, questions: f.questions, choices: f.choices,
+    fid: { size: fidSize, centers: [[c1, c1], [cx2, c1], [c1, cy2], [cx2, cy2]] },
+    idBubbles: [], bubbles: [],
+  };
+  // normalized (u,v) inside the fiducial-center rectangle
+  L.toUV = (x, y) => [(x - c1) / (cx2 - c1), (y - c1) / (cy2 - c1)];
+
+  // Student ID grid: 6 digit columns × digits 0-9, top right
+  const id = { digits: 6, x0: 5.90, y0: 1.80, colPitch: 0.34, rowPitch: 0.215, r: 0.075 };
+  L.id = id;
+  for (let d = 0; d < id.digits; d++)
+    for (let v = 0; v <= 9; v++)
+      L.idBubbles.push({ digit: d, value: v, cx: id.x0 + d * id.colPitch, cy: id.y0 + v * id.rowPitch, r: id.r });
+
+  // Question bubbles in column blocks
+  const qTop = 4.35, qBottom = 10.25;
+  const perCol = Math.ceil(f.questions / f.qCols);
+  const pitch = Math.min(0.32, (qBottom - qTop) / Math.max(1, perCol - 1));
+  const colWidth = (PAGE_W - 1.7) / f.qCols;
+  const qm = { qTop, pitch, perCol, colWidth, labelX0: 0.95, bubbleDx: 0.45, chPitch: 0.26, r: 0.082 };
+  L.qMeta = qm;
+  for (let q = 0; q < f.questions; q++) {
+    const col = Math.floor(q / perCol), row = q % perCol;
+    const x0 = qm.labelX0 + col * colWidth;
+    const cy = qTop + row * pitch;
+    for (let c = 0; c < f.choices; c++)
+      L.bubbles.push({ q, choice: c, cx: x0 + qm.bubbleDx + c * qm.chPitch, cy, r: qm.r });
+  }
+  return L;
+}
+
+/* ---------- SVG sheet rendering (units: 1 inch = 100 svg units) ---------- */
+function renderSheetSVG(formKey, title, opts = {}) {
+  const L = buildLayout(formKey);
+  const U = v => (v * 100).toFixed(1);
+  const s = [];
+  const dims = opts.forPrint ? 'width="8.5in" height="11in"' : 'width="100%"';
+  s.push(`<svg xmlns="http://www.w3.org/2000/svg" ${dims} viewBox="0 0 850 1100" font-family="Helvetica, Arial, sans-serif" fill="#111">`);
+  s.push('<rect x="0" y="0" width="850" height="1100" fill="#fff"/>');
+
+  // corner fiducials
+  const fs = L.fid.size * 100;
+  for (const [cx, cy] of L.fid.centers)
+    s.push(`<rect x="${U(cx) - fs / 2}" y="${U(cy) - fs / 2}" width="${fs}" height="${fs}" fill="#000"/>`);
+
+  // header
+  s.push(`<text x="425" y="${U(0.85)}" text-anchor="middle" font-size="20" font-weight="bold">${escXML(title || 'Answer Sheet')}</text>`);
+  s.push(`<text x="425" y="${U(1.08)}" text-anchor="middle" font-size="10" fill="#666">Fill bubbles completely with pencil or dark pen · Erase cleanly · Keep the four corner squares visible</text>`);
+
+  // name / date / quiz lines (left half)
+  const lineDefs = [['Name', 1.55], ['Class', 2.05], ['Quiz', 2.55], ['Date', 3.05]];
+  for (const [label, y] of lineDefs) {
+    s.push(`<text x="${U(0.95)}" y="${U(y)}" font-size="12" fill="#333">${label}</text>`);
+    s.push(`<line x1="${U(1.55)}" y1="${U(y + 0.03)}" x2="${U(5.3)}" y2="${U(y + 0.03)}" stroke="#999" stroke-width="1"/>`);
+  }
+
+  // student ID block
+  const id = L.id;
+  s.push(`<text x="${U(id.x0 + (id.digits - 1) * id.colPitch / 2)}" y="${U(1.32)}" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">STUDENT ID</text>`);
+  for (let d = 0; d < id.digits; d++) {
+    const bx = id.x0 + d * id.colPitch;
+    s.push(`<rect x="${U(bx - 0.13)}" y="${U(1.40)}" width="${U(0.26) - 0}" height="${U(0.24) - 0}" fill="none" stroke="#999" stroke-width="1"/>`);
+  }
+  for (const b of L.idBubbles) {
+    s.push(`<circle cx="${U(b.cx)}" cy="${U(b.cy)}" r="${U(b.r)}" fill="none" stroke="#555" stroke-width="1"/>`);
+    s.push(`<text x="${U(b.cx)}" y="${U(b.cy)}" text-anchor="middle" dominant-baseline="central" font-size="8" fill="#888">${b.value}</text>`);
+  }
+
+  // question labels + bubbles
+  const qm = L.qMeta;
+  let lastQ = -1;
+  for (const b of L.bubbles) {
+    if (b.q !== lastQ) {
+      lastQ = b.q;
+      const col = Math.floor(b.q / qm.perCol);
+      const x0 = qm.labelX0 + col * qm.colWidth;
+      s.push(`<text x="${U(x0 + 0.22)}" y="${U(b.cy)}" text-anchor="end" dominant-baseline="central" font-size="10" fill="#333">${b.q + 1}.</text>`);
+    }
+    s.push(`<circle cx="${U(b.cx)}" cy="${U(b.cy)}" r="${U(b.r)}" fill="none" stroke="#555" stroke-width="1"/>`);
+    s.push(`<text x="${U(b.cx)}" y="${U(b.cy)}" text-anchor="middle" dominant-baseline="central" font-size="8.5" fill="#888">${LETTERS[b.choice]}</text>`);
+  }
+
+  // footer form code
+  s.push(`<text x="425" y="${U(10.62)}" text-anchor="middle" font-size="9" fill="#999">SCANTRON FORM ${L.questions} · print at 100% scale</text>`);
+  s.push('</svg>');
+  return s.join('');
+}
+function escXML(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function renderSheetPreview() {
+  $('sheetPreview').innerHTML = renderSheetSVG($('shForm').value, $('shTitle').value.trim());
+}
+$('shForm').addEventListener('change', renderSheetPreview);
+$('shTitle').addEventListener('input', renderSheetPreview);
+
+$('btnPrintSheet').addEventListener('click', () => {
+  const svg = renderSheetSVG($('shForm').value, $('shTitle').value.trim(), { forPrint: true });
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  document.body.appendChild(frame);
+  frame.contentDocument.write(
+    '<!DOCTYPE html><html><head><style>@page{size:letter;margin:0}html,body{margin:0;padding:0}</style></head><body>' +
+    svg + '</body></html>');
+  frame.contentDocument.close();
+  frame.contentWindow.focus();
+  frame.contentWindow.print();
+  setTimeout(() => frame.remove(), 60000);
+});
+
+/* ============================ OMR scanner ============================ */
+/**
+ * Pipeline: grayscale frame → find the 4 corner fiducial squares (largest
+ * squarish dark blob in each corner quadrant) → homography from normalized
+ * fiducial coords to pixels → sample every bubble from the shared layout →
+ * darkness relative to a surrounding ring of paper = "filled".
+ */
+
+// ---- linear algebra: homography from 4 point pairs (DLT, gaussian elim) ----
+function homographyFrom4(src, dst) {
+  const A = [];
+  for (let i = 0; i < 4; i++) {
+    const [u, v] = src[i], [x, y] = dst[i];
+    A.push([u, v, 1, 0, 0, 0, -u * x, -v * x, x]);
+    A.push([0, 0, 0, u, v, 1, -u * y, -v * y, y]);
+  }
+  // gaussian elimination with partial pivoting on the 8x9 system
+  for (let col = 0; col < 8; col++) {
+    let piv = col;
+    for (let r = col + 1; r < 8; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+    if (Math.abs(A[piv][col]) < 1e-9) return null;
+    [A[col], A[piv]] = [A[piv], A[col]];
+    for (let r = 0; r < 8; r++) {
+      if (r === col) continue;
+      const f = A[r][col] / A[col][col];
+      for (let c = col; c < 9; c++) A[r][c] -= f * A[col][c];
+    }
+  }
+  const h = [];
+  for (let i = 0; i < 8; i++) h.push(A[i][8] / A[i][i]);
+  h.push(1);
+  return h;
+}
+function applyH(h, u, v) {
+  const w = h[6] * u + h[7] * v + h[8];
+  return [(h[0] * u + h[1] * v + h[2]) / w, (h[3] * u + h[4] * v + h[5]) / w];
+}
+
+// ---- grayscale + fiducial detection ----
+function toGray(ctx, w, h) {
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const g = new Uint8Array(w * h);
+  for (let i = 0, j = 0; j < g.length; i += 4, j++)
+    g[j] = (d[i] * 3 + d[i + 1] * 6 + d[i + 2]) / 10;
+  return g;
+}
+
+/**
+ * Every fiducial-like blob in one corner region, nearest-corner first (capped).
+ * Returns [{ x, y, area }]. The previous version kept only the single nearest
+ * blob, which let a stray dark smudge that happens to sit closer to the corner
+ * than the real fiducial win outright and skew the whole homography. Now
+ * readSheet gets all candidates and selectFiducialQuad picks the across-corner
+ * combination whose areas agree and whose quad is plausible.
+ */
+function findFiducialCandidates(gray, W, H, corner) {
+  const rw = Math.floor(W * 0.38), rh = Math.floor(H * 0.38);
+  const x0 = corner[0] === 0 ? 0 : W - rw;
+  const y0 = corner[1] === 0 ? 0 : H - rh;
+  // threshold from region histogram: between dark tail and paper
+  let lo = 255, hi = 0, sum = 0, n = rw * rh;
+  const hist = new Uint32Array(256);
+  for (let y = y0; y < y0 + rh; y++)
+    for (let x = x0; x < x0 + rw; x++) {
+      const v = gray[y * W + x];
+      hist[v]++; sum += v;
+      if (v < lo) lo = v; if (v > hi) hi = v;
+    }
+  if (hi - lo < 40) return []; // no contrast → no fiducial here
+  // 5th percentile (ink) and 60th percentile (paper)
+  let acc = 0, p5 = lo, p60 = hi;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= n * 0.05) { p5 = v; break; } }
+  acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= n * 0.60) { p60 = v; break; } }
+  const thr = (p5 + p60) / 2;
+
+  // connected components over dark pixels (4-connectivity, iterative flood)
+  const seen = new Uint8Array(rw * rh);
+  const minArea = Math.max(60, W * H * 0.00015), maxArea = W * H * 0.02;
+  const ox = corner[0] === 0 ? 0 : rw, oy = corner[1] === 0 ? 0 : rh;
+  const cands = [];
+  const stack = new Int32Array(rw * rh);
+  for (let sy = 0; sy < rh; sy += 2) {
+    for (let sx = 0; sx < rw; sx += 2) {
+      const si = sy * rw + sx;
+      if (seen[si] || gray[(y0 + sy) * W + (x0 + sx)] >= thr) continue;
+      let sp = 0; stack[sp++] = si; seen[si] = 1;
+      let area = 0, cx = 0, cy = 0, minX = rw, maxX = 0, minY = rh, maxY = 0;
+      while (sp > 0) {
+        const i = stack[--sp];
+        const px = i % rw, py = (i / rw) | 0;
+        area++; cx += px; cy += py;
+        if (px < minX) minX = px; if (px > maxX) maxX = px;
+        if (py < minY) minY = py; if (py > maxY) maxY = py;
+        if (px > 0 && !seen[i - 1] && gray[(y0 + py) * W + (x0 + px - 1)] < thr) { seen[i - 1] = 1; stack[sp++] = i - 1; }
+        if (px < rw - 1 && !seen[i + 1] && gray[(y0 + py) * W + (x0 + px + 1)] < thr) { seen[i + 1] = 1; stack[sp++] = i + 1; }
+        if (py > 0 && !seen[i - rw] && gray[(y0 + py - 1) * W + (x0 + px)] < thr) { seen[i - rw] = 1; stack[sp++] = i - rw; }
+        if (py < rh - 1 && !seen[i + rw] && gray[(y0 + py + 1) * W + (x0 + px)] < thr) { seen[i + rw] = 1; stack[sp++] = i + rw; }
+        if (area > maxArea) break;
+      }
+      if (area < minArea || area > maxArea) continue;
+      const bw = maxX - minX + 1, bh = maxY - minY + 1;
+      const aspect = bw / bh, fill = area / (bw * bh);
+      if (aspect < 0.5 || aspect > 2.0 || fill < 0.55) continue;
+      const d2 = (cx / area - ox) ** 2 + (cy / area - oy) ** 2;
+      cands.push({ x: x0 + cx / area, y: y0 + cy / area, area, d2 });
+    }
+  }
+  // Nearest-corner first, capped to keep the K⁴ combination search in
+  // selectFiducialQuad tiny. The real fiducial is normally the nearest anyway;
+  // the extras are only there so a decoy can be out-voted on geometry.
+  cands.sort((a, b) => a.d2 - b.d2);
+  return cands.slice(0, 6);
+}
+
+function fdist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+/**
+ * Choose one blob per corner (TL, TR, BL, BR) forming the most fiducial-like
+ * rectangle. Printed fiducials are identical in size, so the four areas must
+ * agree; the quad must also be correctly ordered and roughly parallelogram-
+ * shaped. That is what out-votes a stray smudge that only wins on nearness.
+ *
+ * If nothing clears the plausibility gates it falls back to the nearest blob per
+ * corner — exactly the pre-hardening behaviour — so a legitimate steep-
+ * perspective sheet is never newly rejected for want of a "nice" quad.
+ */
+function selectFiducialQuad(cand) {
+  let best = null;
+  for (const tl of cand[0]) for (const tr of cand[1])
+    for (const bl of cand[2]) for (const br of cand[3]) {
+      const pts = [tl, tr, bl, br];
+      const areas = pts.map(p => p.area);
+      const areaRatio = Math.max(...areas) / Math.max(1, Math.min(...areas));
+      if (areaRatio > 2.5) continue;                                        // not the same printed mark
+      if (!(tl.x < tr.x && bl.x < br.x && tl.y < bl.y && tr.y < br.y)) continue; // corners out of order
+      const top = fdist(tl, tr), bot = fdist(bl, br);
+      const left = fdist(tl, bl), right = fdist(tr, br);
+      const hRatio = Math.max(top, bot) / Math.max(1, Math.min(top, bot));
+      const vRatio = Math.max(left, right) / Math.max(1, Math.min(left, right));
+      if (hRatio > 1.6 || vRatio > 1.6) continue;                          // too skewed to be one page
+      // Lower is better: consistent areas and near-parallel opposite sides.
+      const score = areaRatio * hRatio * vRatio;
+      if (!best || score < best.score) best = { pts, score };
+    }
+  if (best) return best.pts.map(p => [p.x, p.y]);
+  return cand.map(l => [l[0].x, l[0].y]);
+}
+
+// ---- bubble sampling ----
+// Median darkness of a ring of points around a bubble. Median (not mean) so the
+// occasional sample that lands on a neighbouring bubble's ink, a printed guide
+// line, or this bubble's own outline is out-voted rather than dragging the paper
+// reference up — (ring - inner)/ring only means "how much darker than paper is
+// the middle" while `ring` actually sits on paper.
+function sampleRing(gray, W, H, x, y, r) {
+  const vals = [];
+  for (let a = 0; a < 16; a++) {
+    const px = Math.round(x + r * Math.cos(a * Math.PI / 8));
+    const py = Math.round(y + r * Math.sin(a * Math.PI / 8));
+    if (px < 0 || py < 0 || px >= W || py >= H) continue;
+    vals.push(gray[py * W + px]);
+  }
+  if (!vals.length) return 255;
+  vals.sort((a, b) => a - b);
+  return vals[vals.length >> 1];
+}
+
+/**
+ * Read a sheet from a canvas. Returns
+ * { ok, fiducials, answers[], studentId, scores } or { ok:false, reason }.
+ */
+function readSheet(canvas, layout, numQuestions, wantDebug) {
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const gray = toGray(ctx, W, H);
+
+  const corners = [[0, 0], [1, 0], [0, 1], [1, 1]];
+  const cand = corners.map(c => findFiducialCandidates(gray, W, H, c));
+  const nearest = cand.map(l => l.length ? [l[0].x, l[0].y] : null);
+  if (nearest.some(f => !f)) return { ok: false, reason: 'corners', fiducials: nearest };
+  const fids = selectFiducialQuad(cand);
+
+  const srcUV = layout.fid.centers.map(([x, y]) => layout.toUV(x, y)); // (0,0)..(1,1)
+  const hmg = homographyFrom4(srcUV, fids);
+  if (!hmg) return { ok: false, reason: 'homography', fiducials: fids };
+
+  // pixel radius of a bubble ≈ distance between mapped center and center+r offset
+  const fidWIn = layout.fid.centers[1][0] - layout.fid.centers[0][0];
+  const rUV = layout.qMeta.r / fidWIn;
+  // Where a bubble lands in the image, and its pixel radius.
+  const mapBubble = (uv, r) => {
+    const [x, y] = applyH(hmg, uv[0], uv[1]);
+    const [x2] = applyH(hmg, uv[0] + rUV, uv[1]);
+    return [x, y, Math.max(2, Math.abs(x2 - x) * (r / layout.qMeta.r))];
+  };
+  // "Filled" is the FRACTION of the bubble interior that is clearly darker than
+  // its own local paper — not the average darkness. On a real sheet this matters
+  // for two things the synthetic renderer never had: every printed bubble carries
+  // a light-grey letter (A–E) at its centre, and pencil marks vary widely in
+  // darkness. Averaging let the centre letter nudge blank bubbles up and let a
+  // firm mark elsewhere raise the bar above a lighter (but complete) one — so
+  // real marks were dropped and flickered frame to frame. A coverage fraction
+  // instead reads ~1 for any bubble the student actually filled (dark OR light)
+  // and stays low for the thin printed letter, which inks only a few pixels. The
+  // ring gives the local paper level, so a lighting gradient is handled per-bubble.
+  const INK_RATIO = 0.80;   // a pixel is "ink" at ≥20% darker than its local paper
+  const SNAP_PEN = 0.15;    // coverage penalty per bubble-radius the snap moves
+  // Coverage of the bubble at an image position: fraction of the interior darker
+  // than the local paper (from the ring at 1.45×, just outside the printed outline
+  // and well inside the nearest neighbour).
+  const coverageAt = (x, y, rPx) => {
+    const paper = sampleRing(gray, W, H, x, y, rPx * 1.45);
+    if (paper <= 8) return 0;
+    const inkThr = paper * INK_RATIO;
+    const rin = rPx * 0.72;                 // sample the interior, inside the outline
+    const step = Math.max(1, rin / 4);
+    let dark = 0, tot = 0;
+    for (let dy = -rin; dy <= rin; dy += step)
+      for (let dx = -rin; dx <= rin; dx += step) {
+        if (dx * dx + dy * dy > rin * rin) continue;
+        const px = Math.round(x + dx), py = Math.round(y + dy);
+        if (px < 0 || py < 0 || px >= W || py >= H) continue;
+        tot++;
+        if (gray[py * W + px] < inkThr) dark++;
+      }
+    return tot ? dark / tot : 0;
+  };
+
+  // A handheld sheet bows, and a flat 4-corner homography can't model the curl —
+  // so sample positions drift, most in mid-page (far from any fiducial) and least
+  // near the corners. That drops real marks whose bubble is sampled slightly off.
+  // Fix: snap a WHOLE group (a question's choices, or an ID column) by one shared
+  // offset that maximises the fullest bubble's coverage, then read at that offset.
+  // The search is bounded to less than the gap to the next row/column, so it locks
+  // onto this group's own mark and a blank group can never wander onto its
+  // neighbour. Returns { cov[], ox, oy } — cov aligned with pts order.
+  const snapGroup = (pts, searchR) => {
+    const rPx = pts[0].rPx;
+    const stepPx = Math.max(2, rPx * 0.45);
+    let best = null;
+    for (let oy = -searchR; oy <= searchR + 1e-6; oy += stepPx)
+      for (let ox = -searchR; ox <= searchR + 1e-6; ox += stepPx) {
+        const cov = pts.map(p => coverageAt(p.x + ox, p.y + oy, p.rPx));
+        // Reward the fullest bubble, but penalise how far we moved (SNAP_PEN per
+        // radius). This makes the group lock onto the NEAREST strong mark — its
+        // own, not a neighbour row's — and keeps a blank group at offset 0 instead
+        // of drifting onto a stray dark pixel and inventing an answer.
+        const m = Math.max(...cov) - SNAP_PEN * Math.hypot(ox, oy) / rPx;
+        if (!best || m > best.m) best = { m, cov, ox, oy };
+      }
+    return best;
+  };
+
+  // Score each question, snapping its row of choices onto the mark.
+  const qScores = Array.from({ length: numQuestions }, () => []);
+  const qOff = [];   // [ox, oy] applied to each question's row, for the debug overlay
+  const byQ = Array.from({ length: numQuestions }, () => []);
+  for (const b of layout.bubbles) {
+    if (b.q >= numQuestions) continue;
+    const [x, y, rPx] = mapBubble(layout.toUV(b.cx, b.cy), b.r);
+    byQ[b.q][b.choice] = { x, y, rPx };
+  }
+  // Bound the row snap to under half the row pitch, so a row can never reach a
+  // neighbour row's mark — tighter on dense forms where the rows are closer.
+  const pitchR = layout.qMeta.pitch / layout.qMeta.r;   // row pitch in bubble radii
+  const qSearch = Math.min(2.0, 0.40 * pitchR);
+
+  // Pass 1: snap each row independently and note how confident it is (how full
+  // its fullest bubble came out).
+  const snaps = [];
+  for (let q = 0; q < numQuestions; q++) {
+    const pts = byQ[q].filter(Boolean);
+    if (!pts.length) { snaps[q] = null; qOff[q] = [0, 0]; continue; }
+    const s = snapGroup(pts, pts[0].rPx * qSearch);
+    s.pts = pts; s.conf = Math.max(...s.cov);
+    snaps[q] = s;
+  }
+  // Pass 2: enforce a smooth bow. A blank row has no mark to lock onto, and its
+  // own argmax can wander onto a neighbour row's mark — reading it as "confident"
+  // at a wildly different offset. Since the bow is smooth, the trustworthy offset
+  // for any row is the median of its confident neighbours' offsets (robust to the
+  // odd wanderer). A row keeps its own snap only when it's confident AND agrees
+  // with that trend; otherwise it is re-sampled at the trend, so it reads its own
+  // (blank) position instead of jumping to a neighbour.
+  const CONF = 0.4, TOL = 0.6;   // TOL in bubble radii
+  const medOf = arr => { const a = [...arr].sort((x, y) => x - y); return a[a.length >> 1]; };
+  for (let q = 0; q < numQuestions; q++) {
+    const s = snaps[q];
+    if (!s) continue;
+    const rPx = s.pts[0].rPx;
+    const oys = [], oxs = [];
+    for (let k = Math.max(0, q - 3); k <= Math.min(numQuestions - 1, q + 3); k++)
+      if (snaps[k] && snaps[k].conf >= CONF) { oys.push(snaps[k].oy); oxs.push(snaps[k].ox); }
+    const tOy = oys.length ? medOf(oys) : 0, tOx = oxs.length ? medOf(oxs) : 0;
+    const agrees = s.conf >= CONF && Math.abs(s.oy - tOy) < TOL * rPx && Math.abs(s.ox - tOx) < TOL * rPx;
+    if (agrees || !oys.length) { qScores[q] = s.cov; qOff[q] = [s.ox, s.oy]; }
+    else { qScores[q] = s.pts.map(p => coverageAt(p.x + tOx, p.y + tOy, p.rPx)); qOff[q] = [tOx, tOy]; }
+  }
+  // Per-question fill decision, on the coverage fractions from scoreAt. Each
+  // question is judged against its OWN bubbles: the most-filled choice versus this
+  // question's baseline coverage (a blank bubble still shows a little from the
+  // printed letter). Relative-per-question rather than one global cut, so a firm
+  // mark on one question can't raise the bar on a lighter one elsewhere.
+  const REL = 0.45;   // a mark must reach ~halfway from baseline to the fullest choice…
+  const ABS = 0.13;   // …and clear the baseline by at least this coverage (rejects the letter)
+  const ID_ABS = 0.18; // firmer for ID: a stray digit misroutes the whole score
+  // Baseline coverage for a set of bubbles: mean of all but the two fullest, so a
+  // double-mark (or a bright ID digit) can't drag the baseline up onto itself.
+  const paperBase = arr => {
+    const s = [...arr].sort((a, b) => a - b);
+    const nBase = Math.max(1, s.length - 2);
+    let sum = 0;
+    for (let i = 0; i < nBase; i++) sum += s[i];
+    return sum / nBase;
+  };
+
+  // minMargin is the weakest per-question decision on the sheet (how far the
+  // darkest choice cleared its own cut). A small value flags a sheet worth a
+  // human glance before it's trusted — surfaced in the return for callers.
+  let minMargin = 1;
+  const qCut = [], qTop = [];      // retained per question for the debug overlay
+  const answers = qScores.map((scores, q) => {
+    const base = paperBase(scores);
+    const top = Math.max(...scores);
+    const cut = base + Math.max(REL * (top - base), ABS);
+    qCut[q] = cut; qTop[q] = top;
+    let ans = '';
+    for (let c = 0; c < scores.length; c++) if (scores[c] >= cut) ans += LETTERS[c];
+    if (ans) minMargin = Math.min(minMargin, top - cut);
+    return ans;
+  });
+
+  // student ID columns — strongest marked digit per column, snapped like the
+  // question rows (a column of 10 digits, so search stays under the digit pitch).
+  let studentId = '';
+  for (let d = 0; d < layout.id.digits; d++) {
+    const vals = [], pts = [];
+    for (const b of layout.idBubbles) {
+      if (b.digit !== d) continue;
+      const [x, y, rPx] = mapBubble(layout.toUV(b.cx, b.cy), b.r);
+      vals.push(b.value); pts.push({ x, y, rPx });
+    }
+    if (!pts.length) continue;
+    const cov = snapGroup(pts, pts[0].rPx * 1.2).cov;
+    let bestV = -1, bestS = -1;
+    for (let i = 0; i < cov.length; i++) if (cov[i] > bestS) { bestS = cov[i]; bestV = vals[i]; }
+    if (bestS - paperBase(cov) >= ID_ABS) studentId += bestV;
+  }
+
+  const maxScore = Math.max(...qScores.flat(), 0);
+
+  // Optional: everything the debug overlay needs to draw what the scanner saw —
+  // where each bubble was sampled, its coverage, and whether it counted as filled.
+  // Off by default so the camera loop never pays for it.
+  let debug = null;
+  if (wantDebug) {
+    const bubbles = [];
+    for (const b of layout.bubbles) {
+      if (b.q >= numQuestions) continue;
+      const [x, y, rPx] = mapBubble(layout.toUV(b.cx, b.cy), b.r);
+      const [ox, oy] = qOff[b.q] || [0, 0];   // draw where sampling actually landed
+      bubbles.push({ x: x + ox, y: y + oy, rPx, q: b.q, choice: b.choice,
+        score: qScores[b.q][b.choice], cut: qCut[b.q],
+        filled: (answers[b.q] || '').includes(LETTERS[b.choice]) });
+    }
+    // Per-question summary for the on-image labels: how full the fullest choice
+    // was vs the cut it had to clear. A near-miss (top just under cut) points at a
+    // light/soft mark; a top near zero points at a sampling/geometry problem.
+    const questions = qScores.map((_, q) => ({ q, top: qTop[q], cut: qCut[q] }));
+    debug = { fids, bubbles, questions };
+  }
+
+  return { ok: true, fiducials: fids, answers, studentId, maxScore, thr: ABS, minMargin, debug };
+}
+
+/* ---------- camera loop ---------- */
+const scanState = { stream: null, running: false, lastSig: null, lastSavedSig: null, stable: 0, busy: false };
+const workCanvas = document.createElement('canvas');
+
+function currentLayout() {
+  if (!grQuizMeta) return null;
+  return buildLayout(formForQuestions(grQuizMeta.numQuestions));
+}
+
+/**
+ * Camera failures report into #scanStatus, not just a toast. The toast is
+ * position:fixed, which anchors to the *iframe* viewport when the bridge serves
+ * this page — so on a phone it can fire entirely off-screen and a dead-looking
+ * button is the only symptom. #scanStatus sits inline next to the button and is
+ * therefore always where the user is already looking.
+ */
+function camFail(e) {
+  // e.name is the part worth reading: NotAllowedError = permission refused (the
+  // Served build's sandbox iframe withholds camera), NotFoundError = no camera,
+  // NotReadableError = another app holds it, TypeError = no mediaDevices at all
+  // (insecure context).
+  const detail = e && e.name ? e.name + ': ' + (e.message || '') : String(e);
+  $('scanStatus').textContent = 'Camera unavailable — ' + detail +
+    '. Switch to Photo mode, which works everywhere and gives the scanner a sharper image.';
+  toast('Camera unavailable: ' + detail, true);
+  camStop();
+}
+/**
+ * Fill the camera picker. Only callable meaningfully *after* a stream has been
+ * granted: enumerateDevices() reports empty labels until the user has allowed
+ * camera access once, so calling it earlier yields an unusable list of blanks.
+ * Hidden entirely when there's only one camera and thus no choice to make.
+ */
+async function camListCameras() {
+  const sel = $('camSelect');
+  let cams = [];
+  try {
+    cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+  } catch { return; }
+  if (cams.length < 2) { sel.style.display = 'none'; return; }
+  sel.innerHTML = '';
+  cams.forEach((c, i) => {
+    const o = document.createElement('option');
+    o.value = c.deviceId;
+    o.textContent = c.label || ('Camera ' + (i + 1));
+    sel.appendChild(o);
+  });
+  // The live track's device is the truth — the saved id may be a camera that has
+  // since been unplugged, in which case the browser gave us a different one.
+  const active = scanState.stream && scanState.stream.getVideoTracks()[0];
+  const activeId = active && active.getSettings ? active.getSettings().deviceId : '';
+  if (activeId) sel.value = activeId;
+  sel.style.display = '';
+}
+async function camStart() {
+  if (!grQuizMeta) return toast('Pick a quiz first.', true);
+  try {
+    // Undefined on an insecure origin — reads as a confusing TypeError otherwise.
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw Object.assign(new Error('This page has no camera API (insecure context).'),
+                          { name: 'NotSupportedError' });
+    }
+    // facingMode is a phone concept — desktop cameras report no facing mode, so
+    // Chrome ignores it and hands over whichever camera is default (the built-in
+    // webcam, not the doc cam). An explicit deviceId is the only way to aim it.
+    const want = store.cameraId;
+    const videoWanted = want
+      ? { deviceId: { exact: want }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      : { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } };
+    try {
+      scanState.stream = await navigator.mediaDevices.getUserMedia({ video: videoWanted, audio: false });
+    } catch (e) {
+      // exact deviceId fails outright if that camera is gone (unplugged doc cam,
+      // different machine). Forget it and take the default rather than dead-ending.
+      if (!want) throw e;
+      store.cameraId = '';
+      scanState.stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+    }
+    const video = $('camVideo');
+    video.srcObject = scanState.stream;
+    // Inside the try: play() rejects under mobile autoplay policies, and outside
+    // it that rejection was silent.
+    await video.play();
+    $('camWrap').style.display = '';
+    $('btnCamStart').style.display = 'none';
+    $('btnCamStop').style.display = '';
+    scanState.running = true;
+    scanState.lastSig = null; scanState.stable = 0;
+    $('scanStatus').textContent = 'Scanning… hold the sheet flat with all 4 corner squares in view.';
+    scanLoop();
+    // Only now are device labels readable, so the picker is built after the grant.
+    camListCameras();
+  } catch (e) {
+    camFail(e);
+  }
+}
+// Switching camera means a new stream: stop, remember, restart.
+$('camSelect').addEventListener('change', async () => {
+  store.cameraId = $('camSelect').value;
+  if (scanState.running) { camStop(); await camStart(); }
+});
+function camStop() {
+  scanState.running = false;
+  if (scanState.stream) { scanState.stream.getTracks().forEach(t => t.stop()); scanState.stream = null; }
+  $('camWrap').style.display = 'none';
+  $('btnCamStart').style.display = '';
+  $('btnCamStop').style.display = 'none';
+}
+$('btnCamStart').addEventListener('click', camStart);
+$('btnCamStop').addEventListener('click', camStop);
+
+function scanLoop() {
+  if (!scanState.running) return;
+  setTimeout(() => { if (scanState.running) requestAnimationFrame(scanLoop); }, 180);
+  if (scanState.busy) return;
+  const video = $('camVideo');
+  if (!video.videoWidth) return;
+  scanState.busy = true;
+  try {
+    const scale = Math.min(1, 1100 / video.videoWidth);
+    workCanvas.width = Math.round(video.videoWidth * scale);
+    workCanvas.height = Math.round(video.videoHeight * scale);
+    workCanvas.getContext('2d', { willReadFrequently: true }).drawImage(video, 0, 0, workCanvas.width, workCanvas.height);
+    const layout = currentLayout();
+    const res = readSheet(workCanvas, layout, grQuizMeta.numQuestions);
+    drawOverlay(res);
+    if (!res.ok) {
+      scanState.lastSig = null; scanState.stable = 0;
+      // sheet left the frame → allow the next (possibly identical) sheet
+      if (!res.fiducials || res.fiducials.filter(Boolean).length < 2) scanState.lastSavedSig = null;
+      return;
+    }
+    const sig = res.studentId + '|' + res.answers.join(',');
+    if (sig === scanState.lastSavedSig) { scanState.stable = 0; return; } // already saved this sheet
+    if (sig === scanState.lastSig && res.maxScore > 0.25) {
+      scanState.stable++;
+      if (scanState.stable >= 2) { onSheetCaptured(res); return; }
+    } else { scanState.stable = 0; }
+    scanState.lastSig = sig;
+  } finally {
+    scanState.busy = false;
+  }
+}
+
+function drawOverlay(res) {
+  const video = $('camVideo'), ov = $('camOverlay');
+  ov.width = workCanvas.width; ov.height = workCanvas.height;
+  const ctx = ov.getContext('2d');
+  ctx.clearRect(0, 0, ov.width, ov.height);
+  const found = (res.fiducials || []).filter(Boolean);
+  ctx.strokeStyle = res.ok ? '#27ae60' : '#e67e22';
+  ctx.lineWidth = 3;
+  for (const f of found) { ctx.beginPath(); ctx.arc(f[0], f[1], 14, 0, 7); ctx.stroke(); }
+  ctx.font = '16px system-ui'; ctx.fillStyle = res.ok ? '#27ae60' : '#e67e22';
+  ctx.fillText(res.ok ? 'Sheet locked — hold still…' : 'Corners found: ' + found.length + ' / 4', 12, 24);
+}
+
+function beep() {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.frequency.value = 880; osc.connect(g); g.connect(ac.destination);
+    g.gain.setValueAtTime(0.15, ac.currentTime);
+    osc.start(); osc.stop(ac.currentTime + 0.12);
+    setTimeout(() => ac.close(), 300);
+  } catch (e) { /* no audio available */ }
+  if (navigator.vibrate) navigator.vibrate(120);
+}
+
+/**
+ * A scan is "low confidence" when its weakest accepted mark barely cleared its
+ * own per-question cut (readSheet's minMargin). Below this it's worth a human
+ * glance — a faint pencil sheet, or a question where two bubbles were close.
+ */
+const LOW_MARGIN = 0.08;
+function isLowConfidence(res) { return res.minMargin != null && res.minMargin < LOW_MARGIN; }
+
+async function onSheetCaptured(res) {
+  beep();
+  applyScanResult(res);
+  setPendingImage(workCanvas); // hold the captured frame for Drive/IndexedDB
+  scanState.lastSavedSig = res.studentId + '|' + res.answers.join(',');
+  // Even with auto-save on, a shaky read is held for review rather than silently
+  // committed — the whole point of auto-save is trust, and a wrong score saved
+  // unseen is worse than one that waited for a glance.
+  const shaky = isLowConfidence(res);
+  if ($('chkAutoSave').checked && !shaky) {
+    $('scanStatus').textContent = 'Captured — saving…';
+    await scoreAndSave();
+    // resume scanning for the next paper
+    scanState.lastSig = null; scanState.stable = 0;
+    $('scanStatus').textContent = 'Saved ✓ — ready for the next sheet.';
+  } else {
+    camStop();
+    if (shaky) {
+      $('scanStatus').textContent = 'Captured, but some marks are faint or ambiguous — double-check the answers below, then hit "Score & save".';
+      toast('Low-confidence scan — please review before saving.', true);
+    } else {
+      $('scanStatus').textContent = 'Captured — review below, then hit "Score & save".';
+      toast('Sheet scanned — review the bubbles, then save.');
+    }
+  }
+}
+
+function applyScanResult(res) {
+  for (let i = 0; i < grAnswers.length; i++) grAnswers[i] = res.answers[i] || '';
+  paintGrid($('grGrid'), grAnswers);
+  syncFastFromGrid();
+  if (res.studentId) $('grStudentId').value = res.studentId;
+}
+
+/**
+ * Draw what the scanner saw onto #photoDebug: the photo, the four fiducial
+ * centres it locked onto, every bubble it sampled, and each question's coverage
+ * numbers. This turns "it isn't reading cleanly" into something you can see and
+ * read off:
+ *   • red circle   → counted as filled
+ *   • orange circle→ near-miss: inked, but under this question's cut (a light or
+ *                    soft mark) — the number "top/cut" says by how much
+ *   • faint blue   → essentially empty at that spot (near-zero coverage). If a
+ *                    row you filled is all faint blue, the sample landed off the
+ *                    mark → geometry; if it's orange → the mark read too light.
+ */
+function renderScanDebug(res) {
+  const cv = $('photoDebug');
+  if (!cv) return;
+  cv.width = workCanvas.width;
+  cv.height = workCanvas.height;
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(workCanvas, 0, 0);
+  const s = Math.max(1, cv.width / 500);
+  for (const f of (res.fiducials || [])) {
+    if (!f) continue;
+    ctx.strokeStyle = '#2a9d8f'; ctx.lineWidth = 2 * s;
+    ctx.beginPath(); ctx.arc(f[0], f[1], 9 * s, 0, 7); ctx.stroke();
+  }
+  if (!res.debug) { cv.style.display = ''; return; }
+  for (const b of res.debug.bubbles) {
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.rPx, 0, 7);
+    if (b.filled) { ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 2.5 * s; }
+    else if (b.score >= 0.5 * b.cut) { ctx.strokeStyle = '#e67e22'; ctx.lineWidth = 2 * s; } // near-miss
+    else { ctx.strokeStyle = 'rgba(91,111,204,0.4)'; ctx.lineWidth = s; }
+    ctx.stroke();
+  }
+  // Per-question "top/cut" printed to the left of each row.
+  ctx.font = (9 * s).toFixed(0) + 'px system-ui';
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (const q of res.debug.questions) {
+    const first = res.debug.bubbles.find(b => b.q === q.q && b.choice === 0);
+    if (!first) continue;
+    ctx.fillStyle = q.top >= q.cut ? '#c0392b' : q.top >= 0.5 * q.cut ? '#b9770e' : '#5b6fcc';
+    ctx.fillText(q.top.toFixed(2) + '/' + q.cut.toFixed(2), first.x - first.rPx - 3 * s, first.y);
+  }
+  cv.style.display = '';
+}
+
+/* ============================ scanned-image capture → Drive ============================ */
+/**
+ * ZipGrade's one missing trick: keep the photo of each scanned sheet so a paper
+ * can be pulled back up and an ambiguous read overridden. Each captured frame is
+ * (a) cached on-device in IndexedDB keyed by its writeId — instant, offline — and
+ * (b) uploaded to the teacher's OWN Google Drive under Scantron/<class>/<quiz>,
+ * whose fileId is stored on the quiz row (Code.gs submit's trailing Image column).
+ *
+ * The Drive grant is a FRONT-END OAuth token (Google Identity Services, drive.file
+ * scope) obtained in the browser — deliberately independent of the Apps Script
+ * bridge's own authorization, so uploading never re-triggers the bridge's consent
+ * and Code.gs can stay clear of DriveApp (see CLAUDE.md's OAuth-scopes note).
+ * drive.file means this app only ever sees files it created. No student data or
+ * image ever touches GitHub Pages — the shell is static; data goes phone → bridge,
+ * images go phone → Drive.
+ *
+ * Everything here degrades to nothing when unconfigured or offline: no Client ID →
+ * no upload (the row still saves, image-less); offline → the blob waits in
+ * IndexedDB and uploads on the next successful save or queue flush.
+ */
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
+// The image for the sheet currently under review — captured at scan time as a
+// Promise<Blob>, consumed by the next scoreAndSave. Null for manual entries.
+let pendingImage = null;
+// Set while overriding an existing scanned row: the original Drive fileId to
+// carry onto the corrected re-save when no new photo is captured.
+let reviewImageId = null;
+function setPendingImage(canvas) {
+  pendingImage = null;
+  if (!canvas || typeof canvas.toBlob !== 'function') return;
+  pendingImage = new Promise(resolve => {
+    try { canvas.toBlob(b => resolve(b), 'image/jpeg', 0.7); } catch (e) { resolve(null); }
+  });
+}
+async function consumePendingImage() {
+  const p = pendingImage; pendingImage = null;
+  try { return p ? await p : null; } catch { return null; }
+}
+
+/* ---- IndexedDB blob cache, keyed by writeId ---- */
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') return reject(new Error('no indexeddb'));
+    const req = indexedDB.open('scantron-images', 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore('images'); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbPut(id, blob) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('images', 'readwrite');
+    tx.objectStore('images').put(blob, id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function idbGet(id) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('images', 'readonly');
+    const r = tx.objectStore('images').get(id);
+    r.onsuccess = () => resolve(r.result || null);
+    r.onerror = () => reject(r.error);
+  });
+}
+
+/* ---- Google Identity Services token (drive.file), loaded on demand ---- */
+let _gisReady = null, _tokenClient = null, _tokenClientId = null, _pendingTok = null;
+let _driveToken = null, _driveTokenExp = 0;
+function loadGis() {
+  if (_gisReady) return _gisReady;
+  _gisReady = new Promise((resolve, reject) => {
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) return resolve();
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Could not load Google sign-in (offline?).'));
+    document.head.appendChild(s);
+  });
+  return _gisReady;
+}
+/**
+ * Resolve a Drive access token, prompting the user on first use (or when
+ * `interactive`). Cached in memory until a minute before expiry. Throws a plain
+ * message when Drive isn't configured, so callers can treat it as "feature off".
+ */
+async function getDriveToken(interactive) {
+  const clientId = store.driveClientId;
+  if (!clientId) throw new Error('Drive image save is off — add an OAuth Client ID in Settings to turn it on.');
+  if (_driveToken && Date.now() < _driveTokenExp - 60000) return _driveToken;
+  await loadGis();
+  if (!_tokenClient || _tokenClientId !== clientId) {
+    _tokenClientId = clientId;
+    _tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId, scope: DRIVE_SCOPE,
+      callback: resp => {
+        const p = _pendingTok; _pendingTok = null;
+        if (!p) return;
+        if (resp && resp.access_token) {
+          _driveToken = resp.access_token;
+          _driveTokenExp = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
+          p.resolve(_driveToken);
+        } else p.reject(new Error('Drive sign-in did not complete.'));
+      },
+      error_callback: () => { const p = _pendingTok; _pendingTok = null; if (p) p.reject(new Error('Drive sign-in was dismissed.')); },
+    });
+  }
+  return new Promise((resolve, reject) => {
+    _pendingTok = { resolve, reject };
+    _tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
+  });
+}
+function resetDriveAuth() { _tokenClient = null; _tokenClientId = null; _driveToken = null; _driveTokenExp = 0; }
+
+/* ---- Drive REST (folders + multipart upload + media download) ---- */
+async function driveApi(path, opts) {
+  const token = await getDriveToken(false);
+  const res = await fetch('https://www.googleapis.com/' + path, {
+    method: 'GET', ...opts,
+    headers: Object.assign({ Authorization: 'Bearer ' + token }, opts && opts.headers),
+  });
+  if (!res.ok) throw new Error('Drive error ' + res.status);
+  return res;
+}
+function driveSafeName(s) { return String(s || '').replace(/[\\/]/g, '-').trim() || 'untitled'; }
+const _folderCache = new Map();
+async function driveEnsureFolder(name, parentId) {
+  const q = "mimeType='application/vnd.google-apps.folder' and trashed=false and name='" +
+            name.replace(/'/g, "\\'") + "' and '" + parentId + "' in parents";
+  const found = await driveApi('drive/v3/files?spaces=drive&fields=files(id)&q=' + encodeURIComponent(q));
+  const data = await found.json();
+  if (data.files && data.files[0]) return data.files[0].id;
+  const made = await driveApi('drive/v3/files?fields=id', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
+  });
+  return (await made.json()).id;
+}
+async function driveEnsurePath(parts) {
+  let parent = 'root', path = '';
+  for (const raw of parts) {
+    const name = driveSafeName(raw);
+    path += '/' + name;
+    if (_folderCache.has(path)) { parent = _folderCache.get(path); continue; }
+    parent = await driveEnsureFolder(name, parent);
+    _folderCache.set(path, parent);
+  }
+  return parent;
+}
+async function driveUploadImage(blob, className, quizName, baseName) {
+  const folderId = await driveEnsurePath(['Scantron', className || 'Class', quizName || 'Quiz']);
+  const token = await getDriveToken(false);
+  const meta = { name: driveSafeName(baseName || 'sheet') + '-' + Date.now() + '.jpg', parents: [folderId] };
+  const boundary = 'scantron' + Math.random().toString(36).slice(2);
+  const head = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' +
+               JSON.stringify(meta) + '\r\n--' + boundary + '\r\nContent-Type: image/jpeg\r\n\r\n';
+  const body = new Blob([head, blob, '\r\n--' + boundary + '--'], { type: 'multipart/related; boundary=' + boundary });
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'multipart/related; boundary=' + boundary },
+    body,
+  });
+  if (!res.ok) throw new Error('Drive upload failed (' + res.status + ').');
+  return (await res.json()).id;
+}
+async function driveFetchImageUrl(fileId) {
+  const res = await driveApi('drive/v3/files/' + encodeURIComponent(fileId) + '?alt=media');
+  return URL.createObjectURL(await res.blob());
+}
+
+/**
+ * Best-effort: cache the pending scan image locally and, if Drive is on, upload
+ * it and stamp the fileId onto the payload. Never throws — a failure just leaves
+ * the row image-less with the blob still queued in IndexedDB by writeId.
+ */
+async function attachScanImage(payload) {
+  const blob = await consumePendingImage();
+  if (!blob) {
+    // Overriding a reviewed row with no new photo: keep the original image link
+    // so the corrected (newest-wins) row is still reviewable.
+    if (reviewImageId) { payload.imageId = reviewImageId; reviewImageId = null; }
+    return;
+  }
+  reviewImageId = null;
+  idbPut(payload.writeId, blob).catch(() => {});
+  const cls = currentCls();
+  try {
+    payload.imageId = await driveUploadImage(blob, cls && cls.name, payload.quiz, payload.studentId || payload.student || payload.writeId);
+  } catch (e) { /* Drive off or offline — retried on flush / re-scan */ }
+}
+
+/* ---------- photo upload ---------- */
+$('photoFile').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!grQuizMeta) return toast('Pick a quiz first.', true);
+  const img = new Image();
+  img.onload = () => {
+    const scale = Math.min(1, 1400 / img.width);
+    workCanvas.width = Math.round(img.width * scale);
+    workCanvas.height = Math.round(img.height * scale);
+    workCanvas.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, workCanvas.width, workCanvas.height);
+    URL.revokeObjectURL(img.src);
+    const res = readSheet(workCanvas, currentLayout(), grQuizMeta.numQuestions, true);
+    if (!res.ok) {
+      renderScanDebug(res);
+      toast(res.reason === 'corners'
+        ? 'Could not find all 4 corner squares — retake with the whole sheet visible and evenly lit.'
+        : 'Could not read the sheet geometry — try a flatter, straighter photo.', true);
+      return;
+    }
+    applyScanResult(res);
+    setPendingImage(workCanvas); // hold the uploaded photo for Drive/IndexedDB
+    renderScanDebug(res);
+    const shaky = isLowConfidence(res);
+    $('scanStatus').textContent = shaky
+      ? 'Photo read, but some marks are faint or ambiguous — double-check the answers below, then hit "Score & save".'
+      : 'Photo read ✓ — review below, then hit "Score & save".';
+    toast(shaky ? 'Low-confidence read — please review before saving.' : 'Photo read — review the bubbles, then save.', shaky);
+  };
+  img.onerror = () => toast('Could not open that image.', true);
+  img.src = URL.createObjectURL(file);
+  e.target.value = '';
+});
+
+/* ---------- grade mode switching ---------- */
+// The sandbox the bridge serves into refuses camera permission outright (see
+// SERVED_BUILD), so drop the mode entirely there and open on Photo instead.
+if (SERVED_BUILD) {
+  $('modeCamera').remove();
+  document.querySelector('.mode-btn[data-mode="photo"]').classList.add('active');
+  $('photoPanel').style.display = '';
+  $('btnCamStart').style.display = 'none';
+  $('scanStatus').textContent = 'Upload a clear top-down photo of the sheet.';
+}
+document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x === b));
+  const mode = b.dataset.mode;
+  $('photoPanel').style.display = mode === 'photo' ? '' : 'none';
+  const camControls = mode === 'camera';
+  $('btnCamStart').style.display = camControls && !scanState.running ? '' : 'none';
+  $('btnCamStop').style.display = camControls && scanState.running ? '' : 'none';
+  // Only worth showing once it holds a real choice — camListCameras fills it in
+  // after the first grant and leaves it empty when there's one camera.
+  $('camSelect').style.display = camControls && $('camSelect').options.length > 1 ? '' : 'none';
+  if (mode !== 'camera') camStop();
+  $('scanStatus').textContent = mode === 'manual' ? 'Type or tap answers below.' :
+    mode === 'photo' ? 'Upload a clear top-down photo of the sheet.' :
+    'Point the camera at a filled answer sheet — all four corner squares must be in view.';
+}));
+
+/* ============================ settings ============================ */
+$('btnSaveUrl').addEventListener('click', () => testAndConnect('setUrl', 'setStatus'));
+
+$('btnSaveDriveClient').addEventListener('click', () => {
+  store.driveClientId = ($('setDriveClient').value || '').trim();
+  resetDriveAuth(); // a new client id invalidates any cached token/client
+  $('driveStatus').textContent = store.driveClientId
+    ? 'Saved ✓ — you\'ll be asked to allow Drive on the next scan.'
+    : 'Cleared — scanned images stay on this device only.';
+});
+$('btnDriveConnect').addEventListener('click', async () => {
+  $('setDriveClient').value && ($('driveStatus').textContent = '');
+  store.driveClientId = ($('setDriveClient').value || '').trim();
+  resetDriveAuth();
+  if (!store.driveClientId) { $('driveStatus').textContent = 'Enter an OAuth Client ID first.'; return; }
+  $('driveStatus').textContent = '⏳ Opening Google sign-in…';
+  try { await getDriveToken(true); $('driveStatus').textContent = '✓ Drive connected — images will save on each scan.'; }
+  catch (e) { $('driveStatus').textContent = '✕ ' + e.message; }
+});
+
+/* ============================ init ============================ */
+function onConnected() {
+  const cls = currentCls();
+  $('headerSubtitle').textContent = 'Bubble Sheet Grader' + (cls ? ' · ' + cls.name : '');
+  updateSheetLink();
+  if (store.queue.length) flushQueue();
+  // Connected but with nothing to grade against — send the teacher straight to
+  // the one action that makes sense.
+  if (!store.classes.length) openManageModal();
+}
+
+function init() {
+  buildClassTabs();
+  applyCurrentClass();
+  rebuildNewQuizGrid();
+  renderSheetPreview();
+  renderQueueInfo();
+  if (store.bridgeUrl) {
+    $('setUrl').value = store.bridgeUrl;
+    // syncClasses() re-reads the registry from the bridge, so a class created on
+    // another device shows up here without re-pasting anything.
+    api('ping')
+      .then(() => { setConn(true); return syncClasses(); })
+      .then(() => onConnected())
+      .catch(() => setConn(false));
+  } else {
+    $('connectScreen').classList.remove('hidden'); // first run → suite-style connect screen
+  }
+}
+init();
+</script>
+</body>
+</html>

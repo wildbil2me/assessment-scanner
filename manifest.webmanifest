@@ -1,0 +1,16 @@
+{
+  "name": "Scantron! Bubble Sheet Grader",
+  "short_name": "Scantron!",
+  "description": "Scan and grade bubble sheets with your phone's camera.",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": ".",
+  "scope": ".",
+  "background_color": "#f0f2f5",
+  "theme_color": "#5b6fcc",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
