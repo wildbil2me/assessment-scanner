@@ -1,4 +1,4 @@
-// End-to-end simulation test of the Scantron OMR pipeline.
+// End-to-end simulation test of the Quiz Sheets OMR pipeline.
 // Loads the <script> from index.html with a stub DOM, renders a synthetic
 // perspective-warped "photo" of a filled answer sheet, and checks that
 // readSheet() recovers the planted answers and student ID.

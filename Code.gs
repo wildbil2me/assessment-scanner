@@ -1,5 +1,5 @@
 /**
- * Scantron — Google Apps Script backend (paired with index.html)
+ * Quiz Sheets — Google Apps Script backend (paired with index.html)
  *
  * CENTRAL-BRIDGE MODEL (same shape as the sibling "Roll Call!" app):
  * one deployment of this script serves every class. Each class is its own
@@ -49,14 +49,14 @@
  *     Row 1: ID | Name (Last, First) | Last Name | First Name
  *     Row 2+: one student per row. C/D auto-split from B.
  *   Every later tab is one quiz:
- *     Row 1: SCANTRON | <createdISO> | <numQuestions> | <choicesPerQ> | <pointsPerQ>
+ *     Row 1: QUIZ SHEETS | <createdISO> | <numQuestions> | <choicesPerQ> | <pointsPerQ>
  *     Row 2: KEY      |  (blank)     | (blank) | <total pts> | (blank) | Q1 key | Q2 key | ...
  *     Row 3: Timestamp | Student | ID | Score | Percent | Q1 | Q2 | ...
  *     Row 4+: one scored row per student response
  */
 
 // ── QUIZ TAB LAYOUT ─────────────────────────────────────────────────────────
-var MARKER = 'SCANTRON';
+var MARKER = 'QUIZ SHEETS';
 var META_ROW = 1;
 var KEY_ROW = 2;
 var HEADER_ROW = 3;
@@ -216,7 +216,7 @@ function serveApp() {
   // true even when serving from the /dev test URL.
   html = html.replace(/const SERVED_BUILD = false;/, 'const SERVED_BUILD = true;');
   return HtmlService.createHtmlOutput(html)
-    .setTitle('Scantron!')
+    .setTitle('Quiz Sheets')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -265,14 +265,14 @@ function safeEmail() {
  */
 function setup() {
   var n = Object.keys(getClasses()).length;
-  Logger.log('Scantron bridge setup check');
+  Logger.log('Quiz Sheets bridge setup check');
   Logger.log('───────────────────────────');
   Logger.log('Authorization: OK (granted by running this).');
   Logger.log('Classes registered for %s: %s', safeEmail() || 'this account', String(n));
   Logger.log('');
   Logger.log('Next: Deploy → New deployment → Web app.');
   Logger.log('  Execute as: User accessing the web app | Access: your org (or Anyone).');
-  Logger.log('  Copy the /exec URL into the Scantron connect screen.');
+  Logger.log('  Copy the /exec URL into the Quiz Sheets connect screen.');
 }
 
 // ── CLASS REGISTRY ──────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 {
-  "name": "Scantron! Bubble Sheet Grader",
-  "short_name": "Scantron!",
+  "name": "Quiz Sheets Bubble Sheet Grader",
+  "short_name": "Quiz Sheets",
   "description": "Scan and grade bubble sheets with your phone's camera.",
   "display": "standalone",
   "orientation": "portrait",

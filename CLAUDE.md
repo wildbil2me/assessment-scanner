@@ -85,8 +85,8 @@ localStorage is only a cache of the last `listClasses` response so the tab bar c
 
 **Sheet layout** (constants at the top of [Code.gs](Code.gs)): tab 1 is `student-info` (roster — ID
 in A, `Last, First` in B, C/D split from B by formula). Every later tab is one quiz: row 1 metadata
-starting with the `SCANTRON` marker, row 2 the answer key, row 3 headers, row 4+ responses. A tab is
-a quiz iff A1 === `SCANTRON`, which is how `listQuizzes` skips the roster.
+starting with the `QUIZ SHEETS` marker, row 2 the answer key, row 3 headers, row 4+ responses. A tab is
+a quiz iff A1 === `QUIZ SHEETS`, which is how `listQuizzes` skips the roster.
 
 **Scoring is server-side, always.** `submit` scores against the key in the sheet; `updateKey`
 rewrites the key and rescores every existing row. Blank key entries are unscored (0 points possible)

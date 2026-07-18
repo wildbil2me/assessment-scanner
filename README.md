@@ -1,10 +1,10 @@
-# Scantron — a ZipGrade-style bubble sheet grader
+# Quiz Sheets — a ZipGrade-style bubble sheet grader
 
 A multiple-choice quiz grader that runs entirely from **one local HTML file** and uses
 **Google Sheets as its database** (via a Google Apps Script web app). No server, no accounts,
 no install.
 
-- **Each class is its own Google Sheet — and Scantron creates it for you.** One Apps Script
+- **Each class is its own Google Sheet — and Quiz Sheets creates it for you.** One Apps Script
   deployment (the *bridge*) serves every class; your class list lives in your own Google account.
 - **Tab 1 of each class Sheet is `student-info`** — the roster. Student ID in column A,
   `Last, First` in column B, last name in C and first name in D (C/D split from B automatically).
@@ -50,9 +50,9 @@ You set this up **once**, not per class.
    - Execute as: **User accessing the web app**
    - Who has access: **Anyone within your organization** (or **Anyone**)
    - Click Deploy and copy the web app URL (ends in `/exec`).
-5. **Open the `/exec` URL.** That *is* Scantron, already connected to itself — the bridge bakes its
+5. **Open the `/exec` URL.** That *is* Quiz Sheets, already connected to itself — the bridge bakes its
    own URL into the page it serves, so there's nothing to paste. Bookmark it on any device.
-6. Click **+** in the class bar → **Create New Class**. Scantron makes a new Google Sheet in your
+6. Click **+** in the class bar → **Create New Class**. Quiz Sheets makes a new Google Sheet in your
    Drive with a `student-info` tab. Optionally paste a Drive folder link to file it somewhere specific.
 
 > **Two ways to run it, same app.** Opening the `/exec` URL is the easy path and the only practical
@@ -87,7 +87,7 @@ the served app stays on the old build while the disk copy moves ahead.
 
 - **"Could not reach the bridge" / nothing happens on connect** — in order:
   1. **Are you signed in to Google in this browser?** The bridge runs as *you*, so an unauthenticated
-     browser can't call it at all. Open the `/exec` URL in a tab — you should get Scantron itself.
+     browser can't call it at all. Open the `/exec` URL in a tab — you should get Quiz Sheets itself.
      If you get a login page, sign in and retry. (For a raw health check, add `?action=ping` — that
      still answers with JSON.)
   2. Confirm the URL ends in **`/exec`** (not `/dev`), and that you deployed a **new version** after

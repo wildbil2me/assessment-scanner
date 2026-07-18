@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#5b6fcc">
-<title>Scantron!</title>
+<title>Quiz Sheets</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✏️</text></svg>">
 <!-- PWA install + offline app-shell cache. Only link/meta tags here; the service
      worker is registered from inside the single script block below (the tests
@@ -478,9 +478,9 @@ table.results th {
 <body>
 
 <div id="connectScreen" class="hidden">
-  <h2>✏️ Connect Scantron!</h2>
+  <h2>✏️ Connect Quiz Sheets</h2>
   <p class="connect-sub">
-    Scantron! keeps each class in its own Google Sheet — and creates those Sheets for you.<br>
+    Quiz Sheets keeps each class in its own Google Sheet — and creates those Sheets for you.<br>
     One-time setup at <b>script.google.com</b>: <b>New project</b> → paste <code>Code.gs</code> →
     <b>Deploy → New deployment → Web app</b> (Execute as <b>User accessing the web app</b>),
     then paste the <code>/exec</code> URL here. After that, <b>+ Create New Class</b> does the rest.
@@ -496,7 +496,7 @@ table.results th {
     <div class="header-left">
       <div class="header-logo">✏️</div>
       <div class="header-title">
-        <h1>Scantron!</h1>
+        <h1>Quiz Sheets</h1>
         <p><span class="conn-dot" id="connDot" title="connection"></span><span id="headerSubtitle">Bubble Sheet Grader</span></p>
       </div>
     </div>
@@ -739,7 +739,7 @@ table.results th {
         <div class="hint" style="margin-top:14px">
           Create an OAuth <b>Web application</b> client at console.cloud.google.com → APIs &amp; Services →
           Credentials, add this page's address under <b>Authorized JavaScript origins</b>, and paste the
-          Client ID here. Images upload to <code>Drive/Scantron/&lt;class&gt;/&lt;quiz&gt;</code> using the
+          Client ID here. Images upload to <code>Drive/Quiz Sheets/&lt;class&gt;/&lt;quiz&gt;</code> using the
           <code>drive.file</code> scope, so this app only ever sees files it created — a grant kept separate
           from the bridge's. Leave blank to keep scanned images on this device only.
         </div>
@@ -831,7 +831,7 @@ table.results th {
       <div class="hint">Creating a class makes a new Google Sheet in your Drive whose first tab is
         <code>student-info</code> (the roster). Every quiz you create becomes another tab in that same Sheet.
         Archiving hides a class without touching its Sheet; deleting an archived class removes it from
-        Scantron only — the Sheet stays in your Drive and can be re-linked with “Add Existing Sheet”.</div>
+        Quiz Sheets only — the Sheet stays in your Drive and can be re-linked with “Add Existing Sheet”.</div>
 
       <div id="archivedSection" class="hidden">
         <div class="modal-section-label" style="margin-top:18px">Archived</div>
@@ -1009,35 +1009,35 @@ const SERVED_BUILD = false;
  * the bridge (a slug of the name), NOT by this page.
  */
 const store = {
-  get bridgeUrl() { return localStorage.getItem('scantron.bridgeUrl') || DEFAULT_BRIDGE_URL; },
-  set bridgeUrl(v) { localStorage.setItem('scantron.bridgeUrl', v || ''); },
-  get classes() { try { return JSON.parse(localStorage.getItem('scantron.classes')) || []; } catch { return []; } },
-  set classes(v) { localStorage.setItem('scantron.classes', JSON.stringify(v)); },
-  get currentClass() { return localStorage.getItem('scantron.currentClass') || ''; },
-  set currentClass(v) { localStorage.setItem('scantron.currentClass', v || ''); },
+  get bridgeUrl() { return localStorage.getItem('quizsheets.bridgeUrl') || DEFAULT_BRIDGE_URL; },
+  set bridgeUrl(v) { localStorage.setItem('quizsheets.bridgeUrl', v || ''); },
+  get classes() { try { return JSON.parse(localStorage.getItem('quizsheets.classes')) || []; } catch { return []; } },
+  set classes(v) { localStorage.setItem('quizsheets.classes', JSON.stringify(v)); },
+  get currentClass() { return localStorage.getItem('quizsheets.currentClass') || ''; },
+  set currentClass(v) { localStorage.setItem('quizsheets.currentClass', v || ''); },
   get sheetUrl() { const c = currentCls(); return (c && c.sheetUrl) || ''; },
   get quizzes() {
     const c = currentCls();
     if (!c) return [];
-    try { return JSON.parse(localStorage.getItem('scantron.quizzes.' + c.id)) || []; } catch { return []; }
+    try { return JSON.parse(localStorage.getItem('quizsheets.quizzes.' + c.id)) || []; } catch { return []; }
   },
   set quizzes(v) {
     const c = currentCls();
-    if (c) localStorage.setItem('scantron.quizzes.' + c.id, JSON.stringify(v));
+    if (c) localStorage.setItem('quizsheets.quizzes.' + c.id, JSON.stringify(v));
   },
-  get queue() { try { return JSON.parse(localStorage.getItem('scantron.queue')) || []; } catch { return []; } },
-  set queue(v) { localStorage.setItem('scantron.queue', JSON.stringify(v)); },
+  get queue() { try { return JSON.parse(localStorage.getItem('quizsheets.queue')) || []; } catch { return []; } },
+  set queue(v) { localStorage.setItem('quizsheets.queue', JSON.stringify(v)); },
   // Which camera to scan with. A doc cam is a second camera next to the built-in
   // webcam, and Chrome hands out the *default* one — so the choice has to be
   // remembered, or every session starts pointed at the teacher's face.
-  get cameraId() { return localStorage.getItem('scantron.cameraId') || ''; },
-  set cameraId(v) { localStorage.setItem('scantron.cameraId', v || ''); },
+  get cameraId() { return localStorage.getItem('quizsheets.cameraId') || ''; },
+  set cameraId(v) { localStorage.setItem('quizsheets.cameraId', v || ''); },
   // OAuth "Web application" Client ID for saving scanned sheet images to the
   // teacher's own Google Drive (front-end drive.file grant, independent of the
   // bridge's auth — see the scanned-image section). Empty → images stay on this
   // device only; the feature is opt-in.
-  get driveClientId() { return localStorage.getItem('scantron.driveClientId') || ''; },
-  set driveClientId(v) { localStorage.setItem('scantron.driveClientId', v || ''); },
+  get driveClientId() { return localStorage.getItem('quizsheets.driveClientId') || ''; },
+  set driveClientId(v) { localStorage.setItem('quizsheets.driveClientId', v || ''); },
 };
 function currentCls() {
   const id = store.currentClass;
@@ -1094,7 +1094,7 @@ let _jsonpSeq = 0;
 function jsonpCall(url, params, timeoutMs) {
   return new Promise((resolve, reject) => {
     if (!url) return reject(new Error('Not connected — paste your bridge URL in ⚙ Settings.'));
-    const cbName = '_scantronCb' + (++_jsonpSeq);
+    const cbName = '_quizSheetsCb' + (++_jsonpSeq);
     const parts = [];
     Object.keys(params).forEach(k => {
       const v = params[k];
@@ -1383,7 +1383,7 @@ function renderGradebook() {
   showAllBtn.classList.add('hidden');
 
   if (!currentCls()) {
-    table.innerHTML = '<tbody><tr><td><div class="empty-state">No class yet — click <b>+</b> in the class bar to create one. Scantron makes the Google Sheet for you.</div></td></tr></tbody>';
+    table.innerHTML = '<tbody><tr><td><div class="empty-state">No class yet — click <b>+</b> in the class bar to create one. Quiz Sheets makes the Google Sheet for you.</div></td></tr></tbody>';
     return;
   }
   if (_gbLoading && !_gb) {
@@ -1694,7 +1694,7 @@ function classRow(c) {
 
   if (c.archived) {
     actions.appendChild(rowBtn('Restore', 'restore', 'Make this class active again', () => restoreClass(c)));
-    actions.appendChild(rowBtn('Delete', 'delete', 'Remove this class from Scantron', () => confirmDeleteClass(c, row)));
+    actions.appendChild(rowBtn('Delete', 'delete', 'Remove this class from Quiz Sheets', () => confirmDeleteClass(c, row)));
   } else {
     name.title = 'Switch to this class';
     name.addEventListener('click', () => { switchClass(c.id); closeManageModal(); });
@@ -1783,7 +1783,7 @@ function confirmDeleteClass(c, row) {
   warn.className = 'delete-warn';
   warn.textContent = 'Delete permanently?';
   actions.appendChild(warn);
-  actions.appendChild(rowBtn('Yes', 'delete', 'Remove this class from Scantron', () => permanentlyDeleteClass(c)));
+  actions.appendChild(rowBtn('Yes', 'delete', 'Remove this class from Quiz Sheets', () => permanentlyDeleteClass(c)));
   actions.appendChild(rowBtn('Cancel', '', 'Keep this class', () => renderClassList()));
 }
 
@@ -2396,7 +2396,7 @@ async function refreshQuizzes() {
 function renderQuizList() {
   const list = $('quizList');
   if (!currentCls()) {
-    list.innerHTML = '<div class="empty-state">No class yet — click <b>+</b> in the class bar to create one. Scantron makes the Google Sheet for you.</div>';
+    list.innerHTML = '<div class="empty-state">No class yet — click <b>+</b> in the class bar to create one. Quiz Sheets makes the Google Sheet for you.</div>';
     return;
   }
   const quizzes = store.quizzes;
@@ -2814,7 +2814,7 @@ function renderSheetSVG(formKey, title, opts = {}) {
   }
 
   // footer form code
-  s.push(`<text x="425" y="${U(10.62)}" text-anchor="middle" font-size="9" fill="#999">SCANTRON FORM ${L.questions} · print at 100% scale</text>`);
+  s.push(`<text x="425" y="${U(10.62)}" text-anchor="middle" font-size="9" fill="#999">QUIZ SHEETS FORM ${L.questions} · print at 100% scale</text>`);
   s.push('</svg>');
   return s.join('');
 }
@@ -3480,7 +3480,7 @@ function renderScanDebug(res) {
  * ZipGrade's one missing trick: keep the photo of each scanned sheet so a paper
  * can be pulled back up and an ambiguous read overridden. Each captured frame is
  * (a) cached on-device in IndexedDB keyed by its writeId — instant, offline — and
- * (b) uploaded to the teacher's OWN Google Drive under Scantron/<class>/<quiz>,
+ * (b) uploaded to the teacher's OWN Google Drive under Quiz Sheets/<class>/<quiz>,
  * whose fileId is stored on the quiz row (Code.gs submit's trailing Image column).
  *
  * The Drive grant is a FRONT-END OAuth token (Google Identity Services, drive.file
@@ -3519,7 +3519,7 @@ async function consumePendingImage() {
 function idbOpen() {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') return reject(new Error('no indexeddb'));
-    const req = indexedDB.open('scantron-images', 1);
+    const req = indexedDB.open('quizsheets-images', 1);
     req.onupgradeneeded = () => { req.result.createObjectStore('images'); };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -3629,10 +3629,10 @@ async function driveEnsurePath(parts) {
   return parent;
 }
 async function driveUploadImage(blob, className, quizName, baseName) {
-  const folderId = await driveEnsurePath(['Scantron', className || 'Class', quizName || 'Quiz']);
+  const folderId = await driveEnsurePath(['Quiz Sheets', className || 'Class', quizName || 'Quiz']);
   const token = await getDriveToken(false);
   const meta = { name: driveSafeName(baseName || 'sheet') + '-' + Date.now() + '.jpg', parents: [folderId] };
-  const boundary = 'scantron' + Math.random().toString(36).slice(2);
+  const boundary = 'quizsheets' + Math.random().toString(36).slice(2);
   const head = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' +
                JSON.stringify(meta) + '\r\n--' + boundary + '\r\nContent-Type: image/jpeg\r\n\r\n';
   const body = new Blob([head, blob, '\r\n--' + boundary + '--'], { type: 'multipart/related; boundary=' + boundary });

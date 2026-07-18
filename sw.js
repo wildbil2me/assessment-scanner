@@ -1,5 +1,5 @@
 /*
- * Scantron service worker — app-shell cache so live scanning survives a flaky
+ * Quiz Sheets service worker — app-shell cache so live scanning survives a flaky
  * or absent network on the phone.
  *
  * Scope is deliberately narrow: only SAME-ORIGIN GETs are intercepted. Every
@@ -13,7 +13,7 @@
  * That keeps the redeploy-and-repaste workflow honest — a new index.html on
  * GitHub Pages reaches the installed PWA on its second open, not never.
  */
-const CACHE = 'scantron-shell-v1';
+const CACHE = 'quizsheets-shell-v1';
 const SHELL = [
   './',
   './index.html',

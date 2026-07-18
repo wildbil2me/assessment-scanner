@@ -378,7 +378,7 @@ ok(!/const DEFAULT_BRIDGE_URL = '';/.test(servedHtml), 'the empty file:// defaul
 // would put a permanently dead button in front of teachers.
 ok(servedHtml.includes('const SERVED_BUILD = true;'), 'serveApp marks the served build');
 ok(!/const SERVED_BUILD = false;/.test(servedHtml), 'the file:// default is gone from the served copy');
-eq(served._title, 'Scantron!', 'served page is titled');
+eq(served._title, 'Quiz Sheets', 'served page is titled');
 eq(served._xFrame, 'ALLOWALL', 'served page can be framed (HtmlService sandboxes it into an iframe)');
 
 // getUrl() returns the /dev URL when the script is run from the editor. Baking that

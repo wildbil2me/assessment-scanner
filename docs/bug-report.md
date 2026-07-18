@@ -1,6 +1,6 @@
-# Reporting a Scantron bug
+# Reporting a Quiz Sheets bug
 
-Scantron is one HTML file talking to a Google Apps Script "bridge" over JSONP. That
+Quiz Sheets is one HTML file talking to a Google Apps Script "bridge" over JSONP. That
 architecture produces failure modes that don't look like ordinary web bugs — a stale
 deployment, a half-granted OAuth scope, or a signed-out browser all present as *"nothing
 happened."* So the fix usually hinges on details that are easy to leave out of a report.
