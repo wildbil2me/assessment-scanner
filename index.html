@@ -730,7 +730,7 @@ table.results th {
       </div>
       <div class="panel-body">
         <label>Google OAuth Client ID</label>
-        <input type="text" id="setDriveClient" placeholder="…apps.googleusercontent.com" autocomplete="off">
+        <input type="text" id="setDriveClient" placeholder="…apps.googleusercontent.com" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
         <div class="toolbar">
           <button class="btn" id="btnSaveDriveClient">Save</button>
           <button class="btn secondary" id="btnDriveConnect">Connect Drive now</button>
@@ -3733,18 +3733,37 @@ document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', 
 /* ============================ settings ============================ */
 $('btnSaveUrl').addEventListener('click', () => testAndConnect('setUrl', 'setStatus'));
 
-$('btnSaveDriveClient').addEventListener('click', () => {
-  store.driveClientId = ($('setDriveClient').value || '').trim();
+/**
+ * Normalize a pasted OAuth Client ID. A mail/messaging app will linkify the id
+ * and prepend a scheme (http://…apps.googleusercontent.com) and sometimes wrap it
+ * in <…> or add a trailing slash — none of which Google accepts, so it fails with
+ * `invalid_client`. Strip all of that so a linkified paste still works, and write
+ * the cleaned value back into the field so a bad paste is visible.
+ */
+function cleanClientId(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/^<+|>+$/g, '')       // some mailers wrap the link in <…>
+    .replace(/^https?:\/\//i, '')  // a scheme the mailer linkified onto it
+    .replace(/\/+$/, '')           // and any trailing slash
+    .trim();
+}
+function readDriveClientField() {
+  const id = cleanClientId($('setDriveClient').value);
+  $('setDriveClient').value = id; // reflect the normalized value back to the user
+  store.driveClientId = id;
   resetDriveAuth(); // a new client id invalidates any cached token/client
-  $('driveStatus').textContent = store.driveClientId
+  return id;
+}
+$('btnSaveDriveClient').addEventListener('click', () => {
+  const id = readDriveClientField();
+  $('driveStatus').textContent = id
     ? 'Saved ✓ — you\'ll be asked to allow Drive on the next scan.'
     : 'Cleared — scanned images stay on this device only.';
 });
 $('btnDriveConnect').addEventListener('click', async () => {
-  $('setDriveClient').value && ($('driveStatus').textContent = '');
-  store.driveClientId = ($('setDriveClient').value || '').trim();
-  resetDriveAuth();
-  if (!store.driveClientId) { $('driveStatus').textContent = 'Enter an OAuth Client ID first.'; return; }
+  const id = readDriveClientField();
+  if (!id) { $('driveStatus').textContent = 'Enter an OAuth Client ID first.'; return; }
   $('driveStatus').textContent = '⏳ Opening Google sign-in…';
   try { await getDriveToken(true); $('driveStatus').textContent = '✓ Drive connected — images will save on each scan.'; }
   catch (e) { $('driveStatus').textContent = '✕ ' + e.message; }
